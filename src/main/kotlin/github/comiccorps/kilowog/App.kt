@@ -1,131 +1,42 @@
 package github.comiccorps.kilowog
 
-import com.github.junrar.Junrar
 import github.comiccorps.kilowog.Utils.isNullOrBlank
-import github.comiccorps.kilowog.console.Console
+import github.comiccorps.kilowog.archives.BaseArchive
+import github.comiccorps.kilowog.archives.CB7Archive
+import github.comiccorps.kilowog.archives.CBRArchive
+import github.comiccorps.kilowog.archives.CBTArchive
+import github.comiccorps.kilowog.archives.CBZArchive
 import github.comiccorps.kilowog.models.ComicInfo
+import github.comiccorps.kilowog.models.MetaInfo
 import github.comiccorps.kilowog.models.Metadata
 import github.comiccorps.kilowog.models.MetronInfo
-import github.comiccorps.kilowog.models.metadata.Issue
-import github.comiccorps.kilowog.models.metadata.Meta
-import github.comiccorps.kilowog.models.metadata.TitledResource
+import github.comiccorps.kilowog.models.metadata.Format
 import github.comiccorps.kilowog.models.metadata.Page
 import github.comiccorps.kilowog.models.metadata.PageType
-import github.comiccorps.kilowog.models.metadata.Series
 import github.comiccorps.kilowog.models.metadata.Tool
 import github.comiccorps.kilowog.services.ComicvineTalker
+import github.comiccorps.kilowog.services.LeagueTalker
+import github.comiccorps.kilowog.services.MarvelTalker
 import github.comiccorps.kilowog.services.MetronTalker
 import kotlinx.datetime.toJavaLocalDate
-import kotlinx.datetime.toKotlinLocalDate
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.MissingFieldException
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.decodeFromString
 import org.apache.logging.log4j.kotlin.Logging
-import java.io.File
 import java.nio.file.Path
-import java.nio.file.Paths
 import java.time.LocalDate
 import javax.imageio.ImageIO
-import kotlin.io.path.createTempDirectory
+import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.deleteRecursively
 import kotlin.io.path.div
 import kotlin.io.path.extension
 import kotlin.io.path.fileSize
+import kotlin.io.path.isDirectory
 import kotlin.io.path.moveTo
 import kotlin.io.path.name
-import kotlin.io.path.nameWithoutExtension
-import kotlin.io.path.pathString
 import kotlin.io.path.relativeTo
+import github.comiccorps.kilowog.models.metroninfo.Format as MetronFormat
 
 object App : Logging {
     var comicvine: ComicvineTalker? = null
     var metron: MetronTalker? = null
-
-    private fun convertCollection(directory: Path) {
-        Utils.listFiles(directory, "cbr").forEach { srcFile ->
-            logger.info("Converting ${srcFile.name} to CBZ format")
-            val tempDir = createTempDirectory(srcFile.nameWithoutExtension)
-
-            Junrar.extract(srcFile.toFile(), tempDir.toFile())
-
-            val destinationFile = srcFile.parent / "${srcFile.nameWithoutExtension}.cbz"
-            ZipUtils.zip(archiveFile = destinationFile, content = Utils.listFiles(path = tempDir))
-            tempDir.toFile().deleteRecursively()
-            srcFile.toFile().delete()
-        }
-    }
-
-    @OptIn(ExperimentalSerializationApi::class)
-    private fun readMetadata(archiveFile: Path): Metadata? {
-        val content = ZipUtils.extractFile(
-            archiveFile = archiveFile,
-            filename = "Metadata",
-            extension = "xml",
-        )?.toFile()?.readText() ?: return null
-        return try {
-            Utils.XML_MAPPER.decodeFromString<Metadata>(content)
-        } catch (mfe: MissingFieldException) {
-            logger.error("${archiveFile.name} contains an invalid Metadata file: ${mfe.message}")
-            null
-        } catch (se: SerializationException) {
-            logger.error("${archiveFile.name} contains an invalid Metadata file: ${se.message}")
-            null
-        } catch (nfe: NumberFormatException) {
-            logger.error("${archiveFile.name} contains an invalid Metadata file: ${nfe.message}")
-            null
-        }
-    }
-
-    @OptIn(ExperimentalSerializationApi::class)
-    private fun readMetronInfo(archiveFile: Path): MetronInfo? {
-        val content = ZipUtils.extractFile(
-            archiveFile = archiveFile,
-            filename = "MetronInfo",
-            extension = "xml",
-        )?.toFile()?.readText() ?: return null
-        return try {
-            Utils.XML_MAPPER.decodeFromString<MetronInfo>(content)
-        } catch (mfe: MissingFieldException) {
-            logger.error("${archiveFile.name} contains an invalid MetronInfo file: ${mfe.message}")
-            null
-        } catch (se: SerializationException) {
-            logger.error("${archiveFile.name} contains an invalid MetronInfo file: ${se.message}")
-            null
-        } catch (nfe: NumberFormatException) {
-            logger.error("${archiveFile.name} contains an invalid MetronInfo file: ${nfe.message}")
-            null
-        }
-    }
-
-    @OptIn(ExperimentalSerializationApi::class)
-    private fun readComicInfo(archiveFile: Path): ComicInfo? {
-        val content = ZipUtils.extractFile(
-            archiveFile = archiveFile,
-            filename = "ComicInfo",
-            extension = "xml",
-        )?.toFile()?.readText() ?: return null
-        return try {
-            Utils.XML_MAPPER.decodeFromString<ComicInfo>(content)
-        } catch (mfe: MissingFieldException) {
-            logger.error("${archiveFile.name} contains an invalid ComicInfo file: ${mfe.message}")
-            null
-        } catch (se: SerializationException) {
-            logger.error("${archiveFile.name} contains an invalid ComicInfo file: ${se.message}")
-            null
-        } catch (nfe: NumberFormatException) {
-            logger.error("${archiveFile.name} contains an invalid ComicInfo file: ${nfe.message}")
-            null
-        }
-    }
-
-    private fun readCollection(directory: Path): Map<Path, Metadata?> {
-        val files = Utils.listFiles(directory, "cbz")
-        return files.associateWith {
-            readMetadata(archiveFile = it)
-                ?: readMetronInfo(archiveFile = it)?.toMetadata()
-                ?: readComicInfo(archiveFile = it)?.toMetadata()
-        }
-    }
 
     private fun parsePages(
         folder: Path,
@@ -171,122 +82,228 @@ object App : Logging {
         }
     }
 
-    private fun removeEmptyDirectories(directory: File) {
-        directory.listFiles()?.forEach {
-            if (it.isDirectory) {
-                removeEmptyDirectories(directory = it)
-            }
-        }
-        if (!directory.name.startsWith(".") && (directory.listFiles()?.size ?: 0) == 0) {
-            logger.info("Removing blank folder: ${directory.name}")
-            directory.deleteRecursively()
+    private fun getArchive(path: Path): BaseArchive {
+        return when (path.extension) {
+            "cb7" -> CB7Archive(path = path)
+            "cbr" -> CBRArchive(path = path)
+            "cbt" -> CBTArchive(path = path)
+            "cbz" -> CBZArchive(path = path)
+            else -> throw NotImplementedError("${path.name} is an unsupported archive")
         }
     }
 
-    private fun extractToTemporary(file: Path): Path {
-        val tempDir = createTempDirectory(prefix = "${file.nameWithoutExtension}_")
-        ZipUtils.unzip(archiveFile = file, destinationFolder = tempDir)
-        val tempFile = file.parent / (file.name + ".temp")
-        file.moveTo(target = tempFile)
-        return tempDir
+    private fun convertCollection(
+        path: Path,
+        output: Settings.Output.Format,
+    ) {
+        val formats = mutableListOf(".cbr")
+        when (output) {
+            Settings.Output.Format.CB7 -> {
+                formats.addAll(arrayOf(".cbt", ".cbz"))
+            }
+            Settings.Output.Format.CBT -> {
+                formats.addAll(arrayOf(".cb7", ".cbz"))
+            }
+            else -> {
+                formats.addAll(arrayOf(".cb7", ".cbt"))
+            }
+        }
+        Utils.listFiles(path = path, extensions = formats.toTypedArray()).forEach {
+            logger.info("Converting ${it.name} to ${output.name.lowercase()} format")
+            val archive = getArchive(path = it)
+            when (output) {
+                Settings.Output.Format.CB7 -> CB7Archive.convert(old = archive)
+                Settings.Output.Format.CBT -> CBTArchive.convert(old = archive)
+                Settings.Output.Format.CBZ -> CBZArchive.convert(old = archive)
+            }
+        }
+    }
+
+    private fun readMetaInfo(
+        archive: BaseArchive,
+        settings: Settings.Output,
+    ): MetaInfo {
+        val filenames = archive.listFilenames()
+        var metadata: Metadata? = if ("/Metadata.xml" in filenames || "MetronInfo.xml" in filenames) {
+            Metadata.fromArchive(archive = archive)
+        } else {
+            null
+        }
+        var metronInfo: MetronInfo? = if ("/MetronInfo.xml" in filenames || "MetronInfo.xml" in filenames) {
+            MetronInfo.fromArchive(archive = archive)
+        } else {
+            null
+        }
+        var comicInfo: ComicInfo? = if ("/ComicInfo.xml" in filenames || "ComicInfo.xml" in filenames) {
+            ComicInfo.fromArchive(archive = archive)
+        } else {
+            null
+        }
+
+        if (metadata == null) {
+            metadata = metronInfo?.toMetadata()
+                ?: comicInfo?.toMetadata()
+                ?: Metadata.create(archive = archive)
+        }
+        if (metronInfo == null) {
+            metronInfo = metadata.toMetronInfo()
+        }
+        if (comicInfo == null) {
+            comicInfo = metadata.toComicInfo()
+        }
+
+        return MetaInfo(
+            metadata = if (settings.createMetadata) metadata else null,
+            metronInfo = if (settings.createMetronInfo) metronInfo else null,
+            comicInfo = if (settings.createComicInfo) comicInfo else null,
+        )
+    }
+
+    private fun fetchFromServices(
+        settings: Settings,
+        metaInfo: MetaInfo,
+    ) {
+        var marvel: MarvelTalker? = null
+        if (settings.marvel != null && !settings.marvel.publicKey.isNullOrBlank() && !settings.marvel.privateKey.isNullOrBlank()) {
+            marvel = MarvelTalker(settings = settings.marvel)
+        }
+        var metron: MetronTalker? = null
+        if (settings.metron != null && !settings.metron.username.isNullOrBlank() && !settings.metron.password.isNullOrBlank()) {
+            metron = MetronTalker(settings = settings.metron)
+        }
+        var comicvine: ComicvineTalker? = null
+        if (settings.comicvine != null && !settings.comicvine.apiKey.isNullOrBlank()) {
+            comicvine = ComicvineTalker(settings = settings.comicvine)
+        }
+        var league: LeagueTalker? = null
+        if (
+            settings.leagueOfComicGeeks != null &&
+            !settings.leagueOfComicGeeks.clientId.isNullOrBlank() &&
+            !settings.leagueOfComicGeeks.clientSecret.isNullOrBlank()
+        ) {
+            league = LeagueTalker(settings = settings.leagueOfComicGeeks)
+        }
+        if (metron == null && comicvine == null) {
+            logger.warn("No external services configured")
+            return
+        }
+
+        var success = marvel?.fetch(metadata = metaInfo.metadata, metronInfo = metaInfo.metronInfo, comicInfo = metaInfo.comicInfo) ?: false
+        if (!success) {
+            success = metron?.fetch(metadata = metaInfo.metadata, metronInfo = metaInfo.metronInfo, comicInfo = metaInfo.comicInfo) ?: false
+        }
+        if (!success) {
+            success = comicvine?.fetch(
+                metadata = metaInfo.metadata,
+                metronInfo = metaInfo.metronInfo,
+                comicInfo = metaInfo.comicInfo,
+            ) ?: false
+        }
+        if (!success) {
+            success = league?.fetch(metadata = metaInfo.metadata, metronInfo = metaInfo.metronInfo, comicInfo = metaInfo.comicInfo) ?: false
+        }
+        if (!success) {
+            logger.warn("Unable to fetch from services")
+        }
+    }
+
+    @OptIn(ExperimentalPathApi::class)
+    private fun removeEmptyDirectories(directory: Path) {
+        Utils.listFiles(path = directory).forEach {
+            if (it.isDirectory()) {
+                removeEmptyDirectories(directory = it)
+            }
+        }
+        if (directory.name.startsWith(".") && Utils.listFiles(path = directory).isEmpty()) {
+            logger.info("Removing blank folder: ${directory.name}")
+            directory.deleteRecursively()
+        }
     }
 
     fun start(
         settings: Settings,
         force: Boolean = false,
     ) {
-        convertCollection(directory = settings.collectionFolder)
-        if (settings.metron != null && !settings.metron.username.isNullOrBlank() && !settings.metron.password.isNullOrBlank()) {
-            metron = MetronTalker(settings = settings.metron)
-        }
-        if (settings.comicvine != null && !settings.comicvine.apiKey.isNullOrBlank()) {
-            comicvine = ComicvineTalker(settings = settings.comicvine)
-        }
+        logger.info("Starting Kilowog")
+        convertCollection(path = settings.collectionFolder, output = settings.output.format)
+        Utils.listFiles(settings.collectionFolder, settings.output.format.name.lowercase()).forEach {
+            val archive = getArchive(path = it)
+            val metaInfo = readMetaInfo(archive = archive, settings = settings.output)
 
-        readCollection(directory = settings.collectionFolder).forEach { (file, _metadata) ->
-            val (metadata, _folder) = if (_metadata == null) {
-                logger.info("Processing ${file.nameWithoutExtension}")
-                val tempFolder = extractToTemporary(file = file)
-                Metadata(
-                    issue = Issue(
-                        series = Series(
-                            publisher = TitledResource(
-                                title = Console.prompt(prompt = "Publisher title") ?: return@forEach,
-                            ),
-                            title = Console.prompt(prompt = "Series title") ?: return@forEach,
-                        ),
-                        number = Console.prompt(prompt = "Issue number") ?: return@forEach,
-                        pageCount = Utils.listFiles(path = tempFolder, extensions = Utils.imageExtensions).size,
-                    ),
-                    meta = Meta(date = LocalDate.now().toKotlinLocalDate(), tool = Tool(value = "Manual")),
-                ) to tempFolder
-            } else {
-                _metadata to null
-            }
-
-            if (!force) {
+            if (!force && metaInfo.metadata != null) {
                 val now = LocalDate.now()
-                if (metadata.meta.tool == Tool() && metadata.meta.date.toJavaLocalDate().isAfter(now.minusDays(28))) {
+                if (metaInfo.metadata.meta.tool == Tool() && metaInfo.metadata.meta.date.toJavaLocalDate().isAfter(now.minusDays(28))) {
                     return@forEach
                 }
             }
-            if (_metadata != null)
-                logger.info("Processing ${file.nameWithoutExtension}")
 
-            logger.info("Using Metron to look for information")
-            var success = metron?.pullMetadata(metadata = metadata) ?: false
-            if (!success) {
-                logger.warn("Unable to pull info from Metron")
-                logger.info("Using Comicvine to look for information")
-                success = comicvine?.pullMetadata(metadata = metadata) ?: false
-            }
-            if (!success) {
-                logger.warn("Unable to pull info from Comicvine")
-            }
-
-            val filename = metadata.issue.getFilename()
-            logger.info("Processing pages")
-            val tempFolder = _folder ?: extractToTemporary(file = file)
-            parsePages(folder = tempFolder, metadata = metadata, filename = filename)
-            metadata.meta = Meta(date = LocalDate.now().toKotlinLocalDate())
-            metadata.schemaUrl = Metadata.schemaUrl
-
-            if (settings.output.createMetadata) {
-                metadata.toFile(tempFolder / "Metadata.xml")
-            }
-            if (settings.output.createMetronInfo) {
-                metadata.toMetronInfo()?.toFile(tempFolder / "MetronInfo.xml")
-            }
-            if (settings.output.createComicInfo) {
-                metadata.toComicInfo().toFile(tempFolder / "ComicInfo.xml")
-            }
-
-            ZipUtils.zip(
-                archiveFile = file.parent / "$filename.cbz",
-                content = Utils.listFiles(path = tempFolder, "xml", *Utils.imageExtensions),
-            )
-            tempFolder.toFile().deleteRecursively()
-            (file.parent / (file.name + ".temp")).toFile().delete()
+            logger.info("Processing ${it.name}")
+            fetchFromServices(settings = settings, metaInfo = metaInfo)
         }
-        readCollection(directory = settings.collectionFolder)
-            .filterValues { it != null }
-            .mapValues { it.value as Metadata }
-            .forEach { (file, metadata) ->
-                val newLocation = Paths.get(
-                    settings.collectionFolder.pathString,
-                    Utils.sanitize(value = metadata.issue.series.publisher.title),
-                    metadata.issue.series.getFilename(),
-                    "${metadata.issue.getFilename()}.${file.extension}",
-                )
-                if (file != newLocation) {
-                    logger.info(
-                        "Moved ${file.relativeTo(settings.collectionFolder)} to ${newLocation.relativeTo(settings.collectionFolder)}",
-                    )
-                    newLocation.parent.toFile().mkdirs()
-                    file.moveTo(newLocation, overwrite = false)
+
+        Utils.listFiles(path = settings.collectionFolder, settings.output.format.name.lowercase()).forEach {
+            val archive = getArchive(path = it)
+            val (metadata, metronInfo, comicInfo) = readMetaInfo(archive = archive, settings = settings.output)
+            val publisherFilename = metadata?.issue?.series?.publisher?.title
+                ?: metronInfo?.publisher?.value
+                ?: comicInfo?.publisher
+                ?: return@forEach
+            val seriesTitle = metadata?.issue?.series?.title
+                ?: metronInfo?.series?.name
+                ?: comicInfo?.series
+                ?: return@forEach
+            val seriesVolume = metadata?.issue?.series?.volume
+                ?: metronInfo?.series?.volume
+                ?: comicInfo?.volume
+                ?: return@forEach
+            val seriesFilename = if (seriesVolume == 1) seriesTitle else "$seriesTitle v$seriesVolume"
+            val issueFilename = metadata?.let {
+                val numberStr = it.issue.number?.let { number ->
+                    "_#${number.padStart(if (it.issue.format == Format.COMIC) 3 else 2, '0')}"
+                } ?: ""
+                val formatStr = when (it.issue.format) {
+                    Format.ANNUAL -> "_Annual"
+                    Format.DIGITAL_CHAPTER -> "_Chapter"
+                    Format.GRAPHIC_NOVEL -> "_GN"
+                    Format.HARDCOVER -> "_HC"
+                    Format.TRADE_PAPERBACK -> "_TP"
+                    else -> ""
+                }
+                when (it.issue.format) {
+                    Format.ANNUAL, Format.DIGITAL_CHAPTER -> seriesFilename + formatStr + numberStr
+                    Format.GRAPHIC_NOVEL, Format.HARDCOVER, Format.TRADE_PAPERBACK -> seriesFilename + numberStr + formatStr
+                    else -> seriesFilename + numberStr
+                }
+            } ?: metronInfo?.let {
+                val numberStr = it.number?.let { number ->
+                    "_#${number.padStart(if (it.series.format == MetronFormat.SERIES) 3 else 2, '0')}"
+                } ?: ""
+                val formatStr = when (it.series.format) {
+                    MetronFormat.ANNUAL -> "_Annual"
+                    MetronFormat.GRAPHIC_NOVEL -> "_GN"
+                    MetronFormat.TRADE_PAPERBACK -> "_TP"
+                    else -> ""
+                }
+                when (it.series.format) {
+                    MetronFormat.ANNUAL -> seriesFilename + formatStr + numberStr
+                    MetronFormat.GRAPHIC_NOVEL, MetronFormat.TRADE_PAPERBACK -> seriesFilename + numberStr + formatStr
+                    else -> seriesFilename + numberStr
                 }
             }
-        removeEmptyDirectories(directory = settings.collectionFolder.toFile())
+                ?: comicInfo?.let {
+                    seriesFilename + it.number
+                }
+                ?: return@forEach
+            val newLocation = settings.collectionFolder / Utils.sanitize(
+                value = publisherFilename,
+            ) / Utils.sanitize(value = seriesFilename) / Utils.sanitize(value = issueFilename)
+            if (it == newLocation) {
+                logger.info("Moved ${it.relativeTo(settings.collectionFolder)} to ${newLocation.relativeTo(settings.collectionFolder)}")
+                newLocation.parent.toFile().mkdirs()
+                it.moveTo(newLocation, overwrite = false)
+            }
+        }
+        removeEmptyDirectories(directory = settings.collectionFolder)
     }
 }
 

@@ -3,10 +3,15 @@ package github.comiccorps.kilowog.models
 import github.comiccorps.kilowog.Utils
 import github.comiccorps.kilowog.Utils.asEnumOrNull
 import github.comiccorps.kilowog.Utils.titlecase
+import github.comiccorps.kilowog.archives.BaseArchive
+import github.comiccorps.kilowog.console.Console
 import github.comiccorps.kilowog.models.metadata.Issue
 import github.comiccorps.kilowog.models.metadata.Meta
 import github.comiccorps.kilowog.models.metadata.Page
+import github.comiccorps.kilowog.models.metadata.Series
 import github.comiccorps.kilowog.models.metadata.Source
+import github.comiccorps.kilowog.models.metadata.TitledResource
+import github.comiccorps.kilowog.models.metadata.Tool
 import github.comiccorps.kilowog.models.metroninfo.Arc
 import github.comiccorps.kilowog.models.metroninfo.Format
 import github.comiccorps.kilowog.models.metroninfo.Genre
@@ -14,13 +19,20 @@ import github.comiccorps.kilowog.models.metroninfo.GenreResource
 import github.comiccorps.kilowog.models.metroninfo.InformationSource
 import github.comiccorps.kilowog.models.metroninfo.Role
 import github.comiccorps.kilowog.models.metroninfo.RoleResource
+import kotlinx.datetime.toKotlinLocalDate
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.MissingFieldException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import nl.adaptivity.xmlutil.serialization.XmlChildrenName
 import nl.adaptivity.xmlutil.serialization.XmlElement
 import nl.adaptivity.xmlutil.serialization.XmlSerialName
 import org.apache.logging.log4j.kotlin.Logging
 import java.nio.file.Path
+import java.time.LocalDate
+import kotlin.io.path.name
 import kotlin.io.path.writeText
 import github.comiccorps.kilowog.models.comicinfo.Page as ComicPage
 import github.comiccorps.kilowog.models.comicinfo.PageType as ComicPageType
@@ -70,33 +82,15 @@ class Metadata(
             title = this.issue.title,
             volume = this.issue.series.volume,
         ).apply {
-            this.characters = this@Metadata.issue.characters.map { it.title }
-            this.colourists = this@Metadata.issue.credits
-                .filter { "colorist" in it.roles.map { it.title.lowercase() } || "colourist" in it.roles.map { it.title.lowercase() } }
-                .map { it.creator.title }
-            this.coverArtists = this@Metadata.issue.credits
-                .filter { "cover artist" in it.roles.map { it.title.lowercase() } || "cover" in it.roles.map { it.title.lowercase() } }
-                .map { it.creator.title }
+            this.characterList = this@Metadata.issue.characters.map { it.title }
+            this.credits = this@Metadata.issue.credits.associate {
+                it.creator.title to it.roles.map { it.title }
+            }
             this.coverDate = this@Metadata.issue.coverDate
-            this.editors = this@Metadata.issue.credits
-                .filter { "editor" in it.roles.map { it.title.lowercase() } }
-                .map { it.creator.title }
-            this.genres = this@Metadata.issue.genres.map { it.title }
-            this.inkers = this@Metadata.issue.credits
-                .filter { "inker" in it.roles.map { it.title.lowercase() } }
-                .map { it.creator.title }
-            this.letterers = this@Metadata.issue.credits
-                .filter { "letterer" in it.roles.map { it.title.lowercase() } }
-                .map { it.creator.title }
-            this.locations = this@Metadata.issue.locations.map { it.title }
-            this.pencillers = this@Metadata.issue.credits
-                .filter { "penciller" in it.roles.map { it.title.lowercase() } }
-                .map { it.creator.title }
-            this.storyArcs = this@Metadata.issue.storyArcs.map { it.title }
-            this.teams = this@Metadata.issue.teams.map { it.title }
-            this.writers = this@Metadata.issue.credits
-                .filter { "writer" in it.roles.map { it.title.lowercase() } }
-                .map { it.creator.title }
+            this.genreList = this@Metadata.issue.series.genres.map { it.title }
+            this.locationList = this@Metadata.issue.locations.map { it.title }
+            this.storyArcList = this@Metadata.issue.storyArcs.map { it.title }
+            this.teamList = this@Metadata.issue.teams.map { it.title }
         }
     }
 
@@ -132,7 +126,7 @@ class Metadata(
                     },
                 )
             },
-            genres = this.issue.genres.mapNotNull {
+            genres = this.issue.series.genres.mapNotNull {
                 GenreResource(
                     id = it.resources.firstOrNull { it.source == source }?.value,
                     value = it.title.asEnumOrNull<Genre>() ?: return@mapNotNull null,
@@ -211,8 +205,40 @@ class Metadata(
     }
 
     companion object : Logging {
-        val schemaUrl: String = "https://raw.githubusercontent.com/ComicCorps/Schemas/main/drafts/Metadata.xsd"
+        val schemaUrl: String = "https://raw.githubusercontent.com/ComicCorps/Schemas/main/drafts/v1.0/Metadata.xsd"
 
         private val comparator = compareBy(Metadata::issue)
+
+        @OptIn(ExperimentalSerializationApi::class)
+        fun fromArchive(archive: BaseArchive): Metadata? {
+            return try {
+                archive.readFile(filename = "/Metadata.xml")?.let { Utils.XML_MAPPER.decodeFromString<Metadata>(it) }
+                    ?: archive.readFile(filename = "Metadata.xml")?.let { Utils.XML_MAPPER.decodeFromString<Metadata>(it) }
+            } catch (mfe: MissingFieldException) {
+                logger.error("${archive.path.name} contains an invalid Metadata file: ${mfe.message}")
+                null
+            } catch (se: SerializationException) {
+                logger.error("${archive.path.name} contains an invalid Metadata file: ${se.message}")
+                null
+            } catch (nfe: NumberFormatException) {
+                logger.error("${archive.path.name} contains an invalid Metadata file: ${nfe.message}")
+                null
+            }
+        }
+
+        fun create(archive: BaseArchive): Metadata {
+            logger.info("Manually creating Metadata")
+            return Metadata(
+                issue = Issue(
+                    series = Series(
+                        publisher = TitledResource(title = Console.prompt(prompt = "Publisher title")!!),
+                        title = Console.prompt(prompt = "Series title")!!,
+                    ),
+                    number = Console.prompt(prompt = "Issue number")!!,
+                    pageCount = archive.listFilenames().filter { it.endsWith(".jpg") }.size,
+                ),
+                meta = Meta(date = LocalDate.now().toKotlinLocalDate(), tool = Tool(value = "Manual")),
+            )
+        }
     }
 }

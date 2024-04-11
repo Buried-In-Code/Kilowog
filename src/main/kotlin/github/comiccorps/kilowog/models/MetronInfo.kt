@@ -3,11 +3,12 @@ package github.comiccorps.kilowog.models
 import github.comiccorps.kilowog.Utils
 import github.comiccorps.kilowog.Utils.asEnumOrNull
 import github.comiccorps.kilowog.Utils.titlecase
+import github.comiccorps.kilowog.archives.BaseArchive
 import github.comiccorps.kilowog.models.metadata.Format
 import github.comiccorps.kilowog.models.metadata.Issue
 import github.comiccorps.kilowog.models.metadata.Meta
-import github.comiccorps.kilowog.models.metadata.TitledResource
 import github.comiccorps.kilowog.models.metadata.StoryArc
+import github.comiccorps.kilowog.models.metadata.TitledResource
 import github.comiccorps.kilowog.models.metadata.Tool
 import github.comiccorps.kilowog.models.metroninfo.AgeRating
 import github.comiccorps.kilowog.models.metroninfo.Arc
@@ -21,12 +22,18 @@ import github.comiccorps.kilowog.models.metroninfo.Series
 import github.comiccorps.kilowog.models.metroninfo.Source
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.toKotlinLocalDate
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.MissingFieldException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import nl.adaptivity.xmlutil.serialization.XmlChildrenName
 import nl.adaptivity.xmlutil.serialization.XmlElement
 import nl.adaptivity.xmlutil.serialization.XmlSerialName
+import org.apache.logging.log4j.kotlin.Logging
 import java.nio.file.Path
+import kotlin.io.path.name
 import kotlin.io.path.writeText
 import github.comiccorps.kilowog.models.metadata.Credit as MetadataCredit
 import github.comiccorps.kilowog.models.metadata.Page as MetadataPage
@@ -41,31 +48,31 @@ class MetronInfo(
     val ageRating: AgeRating = AgeRating.UNKNOWN,
     @XmlSerialName("Arcs")
     @XmlChildrenName("Arc")
-    val arcs: List<Arc> = emptyList(),
+    var arcs: List<Arc> = emptyList(),
     @XmlSerialName("BlackAndWhite")
     val blackAndWhite: Boolean = false,
     @XmlSerialName("Characters")
     @XmlChildrenName("Character")
-    val characters: List<Resource> = emptyList(),
+    var characters: List<Resource> = emptyList(),
     @XmlSerialName("CoverDate")
-    val coverDate: LocalDate,
+    var coverDate: LocalDate,
     @XmlSerialName("Credits")
     @XmlChildrenName("Credit")
-    val credits: List<Credit> = emptyList(),
+    var credits: List<Credit> = emptyList(),
     @XmlSerialName("Genres")
     @XmlChildrenName("Genre")
     val genres: List<GenreResource> = emptyList(),
     @XmlSerialName("GTIN")
     val gtin: Gtin? = null,
     @XmlSerialName("ID")
-    val id: Source? = null,
+    var id: Source? = null,
     @XmlSerialName("Locations")
     @XmlChildrenName("Location")
-    val locations: List<Resource> = emptyList(),
+    var locations: List<Resource> = emptyList(),
     @XmlSerialName("Notes")
     val notes: String? = null,
     @XmlSerialName("Number")
-    val number: String? = null,
+    var number: String? = null,
     @XmlSerialName("PageCount")
     val pageCount: Int = 0,
     @XmlSerialName("Pages")
@@ -82,20 +89,20 @@ class MetronInfo(
     @XmlSerialName("Series")
     val series: Series,
     @XmlSerialName("StoreDate")
-    val storeDate: LocalDate? = null,
+    var storeDate: LocalDate? = null,
     @XmlSerialName("Stories")
     @XmlChildrenName("Story")
     val stories: List<Resource> = emptyList(),
     @XmlSerialName("Summary")
-    val summary: String? = null,
+    var summary: String? = null,
     @XmlSerialName("Tags")
     @XmlChildrenName("Tag")
     val tags: List<Resource> = emptyList(),
     @XmlSerialName("Teams")
     @XmlChildrenName("Team")
-    val teams: List<Resource> = emptyList(),
+    var teams: List<Resource> = emptyList(),
     @XmlSerialName("CollectionTitle")
-    val title: String? = null,
+    var title: String? = null,
     @XmlSerialName("URL")
     val url: String? = null,
 ) {
@@ -141,16 +148,6 @@ class MetronInfo(
                     )
                 },
                 format = this.series.format?.titlecase()?.asEnumOrNull<Format>() ?: Format.COMIC,
-                genres = this.genres.map { genre ->
-                    TitledResource(
-                        resources = listOfNotNull(
-                            source?.let {
-                                MetadataResource(source = it, value = genre.id ?: return@let null)
-                            },
-                        ),
-                        title = genre.value.titlecase(),
-                    )
-                },
                 language = this.series.lang,
                 locations = this.locations.map { location ->
                     TitledResource(
@@ -172,6 +169,16 @@ class MetronInfo(
                     },
                 ),
                 series = MetadataSeries(
+                    genres = this.genres.map { genre ->
+                        TitledResource(
+                            resources = listOfNotNull(
+                                source?.let {
+                                    MetadataResource(source = it, value = genre.id ?: return@let null)
+                                },
+                            ),
+                            title = genre.value.titlecase(),
+                        )
+                    },
                     publisher = TitledResource(
                         resources = listOfNotNull(
                             source?.let {
@@ -285,5 +292,24 @@ class MetronInfo(
             "url=$url, " +
             "schemaUrl='$schemaUrl'" +
             ")"
+    }
+
+    companion object : Logging {
+        @OptIn(ExperimentalSerializationApi::class)
+        fun fromArchive(archive: BaseArchive): MetronInfo? {
+            return try {
+                archive.readFile(filename = "/MetronInfo.xml")?.let { Utils.XML_MAPPER.decodeFromString<MetronInfo>(it) }
+                    ?: archive.readFile(filename = "MetronInfo.xml")?.let { Utils.XML_MAPPER.decodeFromString<MetronInfo>(it) }
+            } catch (mfe: MissingFieldException) {
+                logger.error("${archive.path.name} contains an invalid MetronInfo file: ${mfe.message}")
+                null
+            } catch (se: SerializationException) {
+                logger.error("${archive.path.name} contains an invalid MetronInfo file: ${se.message}")
+                null
+            } catch (nfe: NumberFormatException) {
+                logger.error("${archive.path.name} contains an invalid MetronInfo file: ${nfe.message}")
+                null
+            }
+        }
     }
 }

@@ -8,6 +8,9 @@ import org.apache.logging.log4j.kotlin.Logging
 
 @Serializable
 class Series(
+    @XmlSerialName("Genres")
+    @XmlChildrenName("Genre")
+    var genres: List<TitledResource> = emptyList(),
     @XmlSerialName("Publisher")
     var publisher: TitledResource,
     @XmlSerialName("Resources")
@@ -45,7 +48,7 @@ class Series(
     }
 
     override fun toString(): String {
-        return "Series(publisher=$publisher, resources=$resources, startYear=$startYear, title='$title', volume=$volume)"
+        return "Series(genres=$genres, publisher=$publisher, resources=$resources, startYear=$startYear, title='$title', volume=$volume)"
     }
 
     companion object : Logging {

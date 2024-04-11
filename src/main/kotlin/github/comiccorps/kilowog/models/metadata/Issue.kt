@@ -20,9 +20,6 @@ class Issue(
     var credits: List<Credit> = emptyList(),
     @XmlSerialName("Format")
     var format: Format = Format.COMIC,
-    @XmlSerialName("Genres")
-    @XmlChildrenName("Genre")
-    var genres: List<TitledResource> = emptyList(),
     @XmlElement(false)
     var language: String = "en",
     @XmlSerialName("Locations")
@@ -108,7 +105,6 @@ class Issue(
             "coverDate=$coverDate, " +
             "credits=$credits, " +
             "format=$format, " +
-            "genres=$genres, " +
             "language='$language', " +
             "locations=$locations, " +
             "number=$number, " +

@@ -23,7 +23,13 @@ data class Settings(
 
     data class Metron(val username: String? = null, val password: Secret? = null)
 
-    data class Output(val createComicInfo: Boolean, val createMetadata: Boolean, val createMetronInfo: Boolean)
+    data class Output(val createComicInfo: Boolean, val createMetadata: Boolean, val createMetronInfo: Boolean, val format: Format) {
+        enum class Format {
+            CB7,
+            CBT,
+            CBZ,
+        }
+    }
 
     companion object {
         fun load(): Settings =

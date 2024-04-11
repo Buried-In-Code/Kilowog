@@ -29,7 +29,7 @@ data class Comicvine(private val apiKey: String, private val cache: SQLiteCache?
 
     private fun encodeURI(
         endpoint: String,
-        params: MutableMap<String, String> = HashMap(),
+        params: MutableMap<String, String> = mutableMapOf(),
     ): URI {
         params["api_key"] = apiKey
         params["format"] = "json"
@@ -83,35 +83,28 @@ data class Comicvine(private val apiKey: String, private val cache: SQLiteCache?
         return null
     }
 
-    @JvmOverloads
-    fun listPublishers(
-        title: String? = null,
-        page: Int = 1,
-    ): List<PublisherEntry> {
-        val params = HashMap<String, String>()
-        params["limit"] = PAGE_LIMIT.toString()
-        params["offset"] = ((page - 1) * PAGE_LIMIT).toString()
-        if (!title.isNullOrBlank()) {
-            params["filter"] = "name:$title"
-        }
-        val uri = encodeURI(endpoint = "/publishers", params = params)
-        val content = sendRequest(uri = uri)
-        val response: Response<ArrayList<PublisherEntry>>? = try {
-            Utils.JSON_MAPPER.decodeFromString<Response<ArrayList<PublisherEntry>>>(content ?: "Invalid")
+    fun listPublishers(params: Map<String, String> = emptyMap()): List<PublisherEntry> {
+        val temp = params.toMutableMap()
+        temp["page"] = temp.getOrDefault("page", 1).toString()
+        temp["limit"] = temp.getOrDefault("limit", PAGE_LIMIT).toString()
+        temp["offset"] = temp.getOrDefault("offset", temp["page"]!!.toInt() * PAGE_LIMIT).toString()
+        val uri = encodeURI(endpoint = "/publishers", params = temp)
+        try {
+            val content: String = sendRequest(uri = uri) ?: return emptyList()
+            val response: Response<ArrayList<PublisherEntry>> = Utils.JSON_MAPPER.decodeFromString(content)
+            val results = response.results
+            if (results.isNotEmpty() && this.cache != null) {
+                cache.insert(url = regex.replaceFirst(uri.toString(), "api_key=***&"), response = content)
+            }
+            if (response.totalResults >= temp["page"]!!.toInt() * PAGE_LIMIT) {
+                temp["page"] = (temp["page"]!!.toInt() + 1).toString()
+                results.addAll(this.listPublishers(params = temp))
+            }
+            return results
         } catch (se: SerializationException) {
             logger.error("Unable to parse response", se)
-            logger.debug(content ?: "")
-            null
+            return emptyList()
         }
-//        val response = if (content != null) Utils.JSON_MAPPER.decodeFromString<Response<ArrayList<PublisherEntry>>>(content) else null
-        val results = response?.results ?: mutableListOf()
-        if (results.isNotEmpty() && this.cache != null) {
-            cache.insert(url = regex.replaceFirst(uri.toString(), "api_key=***&"), response = content!!)
-        }
-        if ((response?.totalResults ?: -1) >= page * PAGE_LIMIT) {
-            results.addAll(listPublishers(title = title, page = page + 1))
-        }
-        return results
     }
 
     fun getPublisher(publisherId: Long): Publisher? {
@@ -130,40 +123,28 @@ data class Comicvine(private val apiKey: String, private val cache: SQLiteCache?
         return response?.results
     }
 
-    @JvmOverloads
-    fun listVolumes(
-        publisherId: Long,
-        title: String? = null,
-        startYear: Int? = null,
-        page: Int = 1,
-    ): List<VolumeEntry> {
-        val params = HashMap<String, String>()
-        params["limit"] = PAGE_LIMIT.toString()
-        params["offset"] = ((page - 1) * PAGE_LIMIT).toString()
-        if (!title.isNullOrBlank()) {
-            params["filter"] = "name:$title"
-        }
-        val uri = encodeURI(endpoint = "/volumes", params = params)
-        val content = sendRequest(uri = uri)
-        val response: Response<ArrayList<VolumeEntry>>? = try {
-            Utils.JSON_MAPPER.decodeFromString<Response<ArrayList<VolumeEntry>>>(content ?: "Invalid")
+    fun listVolumes(params: Map<String, String> = emptyMap()): List<VolumeEntry> {
+        val temp = params.toMutableMap()
+        temp["page"] = temp.getOrDefault("page", 1).toString()
+        temp["limit"] = temp.getOrDefault("limit", PAGE_LIMIT).toString()
+        temp["offset"] = temp.getOrDefault("offset", temp["page"]!!.toInt() * PAGE_LIMIT).toString()
+        val uri = encodeURI(endpoint = "/volumes", params = temp)
+        try {
+            val content: String = sendRequest(uri = uri) ?: return emptyList()
+            val response: Response<ArrayList<VolumeEntry>> = Utils.JSON_MAPPER.decodeFromString(content)
+            val results = response.results
+            if (results.isNotEmpty() && this.cache != null) {
+                cache.insert(url = regex.replaceFirst(uri.toString(), "api_key=***&"), response = content)
+            }
+            if (response.totalResults >= temp["page"]!!.toInt() * PAGE_LIMIT) {
+                temp["page"] = (temp["page"]!!.toInt() + 1).toString()
+                results.addAll(this.listVolumes(params = temp))
+            }
+            return results
         } catch (se: SerializationException) {
             logger.error("Unable to parse response", se)
-            logger.debug(content ?: "")
-            null
+            return emptyList()
         }
-        var results = response?.results ?: mutableListOf()
-        if (results.isNotEmpty() && this.cache != null) {
-            cache.insert(url = regex.replaceFirst(uri.toString(), "api_key=***&"), response = content!!)
-        }
-        if ((response?.totalResults ?: -1) >= page * PAGE_LIMIT) {
-            results.addAll(listVolumes(publisherId = publisherId, title = title, startYear = startYear, page = page + 1))
-        }
-        results = results.stream().filter { (it.publisher != null) && (it.publisher.id == publisherId) }.toList()
-        if (startYear != null) {
-            results = results.stream().filter { it.startYear == startYear }.toList()
-        }
-        return results
     }
 
     fun getVolume(volumeId: Long): Volume? {
@@ -182,37 +163,28 @@ data class Comicvine(private val apiKey: String, private val cache: SQLiteCache?
         return response?.results
     }
 
-    @JvmOverloads
-    fun listIssues(
-        volumeId: Long,
-        number: String? = null,
-        page: Int = 1,
-    ): List<IssueEntry> {
-        val params = HashMap<String, String>()
-        params["limit"] = PAGE_LIMIT.toString()
-        params["offset"] = ((page - 1) * PAGE_LIMIT).toString()
-        if (!number.isNullOrBlank()) {
-            params["filter"] = "volume:$volumeId,issue_number:$number"
-        } else {
-            params["filter"] = "volume:$volumeId"
-        }
-        val uri = encodeURI(endpoint = "/issues", params = params)
-        val content = sendRequest(uri = uri)
-        val response: Response<ArrayList<IssueEntry>>? = try {
-            Utils.JSON_MAPPER.decodeFromString<Response<ArrayList<IssueEntry>>>(content ?: "Invalid")
+    fun listIssues(params: Map<String, String> = emptyMap()): List<IssueEntry> {
+        val temp = params.toMutableMap()
+        temp["page"] = temp.getOrDefault("page", 1).toString()
+        temp["limit"] = temp.getOrDefault("limit", PAGE_LIMIT).toString()
+        temp["offset"] = temp.getOrDefault("offset", temp["page"]!!.toInt() * PAGE_LIMIT).toString()
+        val uri = encodeURI(endpoint = "/issues", params = temp)
+        try {
+            val content: String = sendRequest(uri = uri) ?: return emptyList()
+            val response: Response<ArrayList<IssueEntry>> = Utils.JSON_MAPPER.decodeFromString(content)
+            val results = response.results
+            if (results.isNotEmpty() && this.cache != null) {
+                cache.insert(url = regex.replaceFirst(uri.toString(), "api_key=***&"), response = content)
+            }
+            if (response.totalResults >= temp["page"]!!.toInt() * PAGE_LIMIT) {
+                temp["page"] = (temp["page"]!!.toInt() + 1).toString()
+                results.addAll(this.listIssues(params = temp))
+            }
+            return results
         } catch (se: SerializationException) {
             logger.error("Unable to parse response", se)
-            logger.debug(content ?: "")
-            null
+            return emptyList()
         }
-        val results = response?.results ?: mutableListOf()
-        if (results.isNotEmpty() && this.cache != null) {
-            cache.insert(url = regex.replaceFirst(uri.toString(), "api_key=***&"), response = content!!)
-        }
-        if ((response?.totalResults ?: -1) >= page * PAGE_LIMIT) {
-            results.addAll(listIssues(volumeId = volumeId, number = number, page = page + 1))
-        }
-        return results
     }
 
     fun getIssue(issueId: Long): Issue? {

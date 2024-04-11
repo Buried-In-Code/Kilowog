@@ -8,9 +8,9 @@ import org.apache.logging.log4j.kotlin.Logging
 @Serializable
 class Resource(
     @XmlElement(false)
-    val id: Long? = null,
+    var id: Long? = null,
     @XmlValue
-    val value: String,
+    var value: String,
 ) : Comparable<Resource> {
     override fun compareTo(other: Resource): Int = comparator.compare(this, other)
 

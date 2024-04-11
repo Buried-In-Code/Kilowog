@@ -10,11 +10,11 @@ class Series(
     @XmlSerialName("Format")
     val format: Format? = null,
     @XmlElement(false)
-    val id: Long? = null,
+    var id: Long? = null,
     @XmlElement(false)
     val lang: String = "en",
     @XmlSerialName("Name")
-    val name: String,
+    var name: String,
     @XmlSerialName("SortName")
     val sortName: String? = null,
     @XmlSerialName("Volume")

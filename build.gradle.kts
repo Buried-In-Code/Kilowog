@@ -1,8 +1,8 @@
 import com.github.benmanes.gradle.versions.updates.DependencyUpdatesTask
 
 plugins {
-    kotlin("jvm") version "1.9.22"
-    kotlin("plugin.serialization") version "1.9.22"
+    kotlin("jvm") version "1.9.23"
+    kotlin("plugin.serialization") version "1.9.23"
     application
     id("com.github.ben-manes.versions") version "0.51.0"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
@@ -22,6 +22,7 @@ repositories {
 }
 
 dependencies {
+    implementation("org.apache.commons", "commons-compress", "1.26.1")
     implementation("com.github.junrar", "junrar", "7.5.5")
     implementation("com.sksamuel.hoplite", "hoplite-core", "2.7.5")
     implementation("org.jetbrains.kotlinx", "kotlinx-datetime", "0.5.0")
@@ -35,7 +36,7 @@ dependencies {
 
     // Log4j2
     implementation("org.apache.logging.log4j", "log4j-api-kotlin", "1.4.0")
-    runtimeOnly("org.apache.logging.log4j", "log4j-slf4j2-impl", "2.23.0")
+    runtimeOnly("org.apache.logging.log4j", "log4j-slf4j2-impl", "2.23.1")
 }
 
 kotlin {

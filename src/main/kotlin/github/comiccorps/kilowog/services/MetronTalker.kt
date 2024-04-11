@@ -1,261 +1,300 @@
 package github.comiccorps.kilowog.services
 
+import github.comiccorps.kilowog.Settings
 import github.comiccorps.kilowog.Utils
-import github.comiccorps.kilowog.Utils.asEnumOrNull
 import github.comiccorps.kilowog.console.Console
+import github.comiccorps.kilowog.models.ComicInfo
 import github.comiccorps.kilowog.models.Metadata
-import github.comiccorps.kilowog.models.metadata.Credit
-import github.comiccorps.kilowog.models.metadata.Format
-import github.comiccorps.kilowog.models.metadata.TitledResource
+import github.comiccorps.kilowog.models.MetronInfo
 import github.comiccorps.kilowog.models.metadata.Resource
 import github.comiccorps.kilowog.models.metadata.Source
-import github.comiccorps.kilowog.models.metadata.StoryArc
+import github.comiccorps.kilowog.models.metroninfo.InformationSource
+import github.comiccorps.kilowog.services.metron.issue.Issue
 import github.comiccorps.kilowog.services.metron.issue.IssueEntry
+import github.comiccorps.kilowog.services.metron.publisher.Publisher
 import github.comiccorps.kilowog.services.metron.publisher.PublisherEntry
+import github.comiccorps.kilowog.services.metron.series.Series
 import github.comiccorps.kilowog.services.metron.series.SeriesEntry
 import org.apache.logging.log4j.kotlin.Logging
 import java.nio.file.Paths
-import github.comiccorps.kilowog.Settings.Metron as MetronSettings
 
-class MetronTalker(settings: MetronSettings) {
-    private val metron: Metron = Metron(
+class MetronTalker(settings: Settings.Metron) : BaseService() {
+    private val session: Metron = Metron(
         username = settings.username!!,
         password = settings.password!!,
         cache = SQLiteCache(path = Paths.get(Utils.CACHE_ROOT.toString(), "cache.sqlite"), expiry = 14),
     )
 
-    private fun searchPublishers(title: String): List<PublisherEntry> {
-        val publishers = this.metron.listPublishers(title = title)
-        if (publishers.isEmpty()) {
-            logger.warn("No publishers found with query {\"title\": $title}")
+    private fun searchPublishers(title: String?): Long? {
+        val name = title ?: Console.prompt("Publisher title")
+        val options = if (name == null)
+            this.session.listPublishers()
+        else
+            this.session.listPublishers(mapOf("name" to name))
+        val index = Console.menu(
+            choices = options.map { "${it.id} | ${it.name}" },
+            prompt = "Select Metron Publisher",
+            default = "None of the Above",
+        )
+        if (index != 0) {
+            return options[index - 1].id
         }
-        return publishers
+        if (!Console.confirm(prompt = "Try Again")) {
+            return null
+        }
+        return this.searchPublishers(title = null)
     }
 
-    private fun pullPublisher(metadata: Metadata): Long? {
-        var publisherId = metadata.issue.series.publisher.resources.firstOrNull { it.source == Source.METRON }?.value
-        if (publisherId == null) {
-            val comicvineId = metadata.issue.series.publisher.resources.firstOrNull { it.source == Source.COMICVINE }?.value
-            if (comicvineId != null) {
-                val tempPublisher = this.metron.getPublisherByComicvine(comicvineId = comicvineId)
-                publisherId = tempPublisher?.id
-            }
-        }
-        if (publisherId == null) {
-            var publisherTitle: String = metadata.issue.series.publisher.title
-            do {
-                val publishers = this.searchPublishers(title = publisherTitle).sorted()
-                val index = Console.menu(
-                    choices = publishers.map { "${it.id} | ${it.name}" },
-                    prompt = "Select Metron Publisher",
-                    default = "None of the Above",
-                )
-                if (index == 0) {
-                    if (Console.confirm(prompt = "Try again")) {
-                        publisherTitle = Console.prompt(prompt = "Publisher title") ?: return null
-                    } else {
-                        return null
-                    }
-                } else {
-                    publisherId = publishers[index - 1].id
-                }
-            } while (publisherId == null)
-        } else {
-            logger.info("Found existing Publisher id")
-        }
-        val publisher = this.metron.getPublisher(publisherId = publisherId) ?: return null
+    private fun addPublisher(
+        publisher: Publisher,
+        metadata: Metadata,
+    ) {
         val resources = metadata.issue.series.publisher.resources.toMutableSet()
-        resources.add(Resource(source = Source.METRON, value = publisherId))
-        if (publisher.comicvineId != null) {
-            resources.add(Resource(source = Source.COMICVINE, value = publisher.comicvineId))
-        }
+        resources.add(Resource(source = Source.METRON, value = publisher.id))
         metadata.issue.series.publisher.resources = resources.toList()
         metadata.issue.series.publisher.title = publisher.name
+    }
 
-        return publisherId
+    private fun addPublisher(
+        publisher: Publisher,
+        metronInfo: MetronInfo,
+    ) {
+        if (metronInfo.id == null || metronInfo.id!!.source == InformationSource.METRON) {
+            metronInfo.publisher.id = publisher.id
+        }
+        metronInfo.publisher.value = publisher.name
+    }
+
+    private fun addPublisher(
+        publisher: Publisher,
+        comicInfo: ComicInfo,
+    ) {
+        comicInfo.publisher = publisher.name
+    }
+
+    fun fetchPublisher(
+        metadata: Metadata?,
+        metronInfo: MetronInfo?,
+        comicInfo: ComicInfo?,
+    ): Publisher? {
+        var publisherId: Long? = null
+        var comicvineId: Long? = null
+        metadata?.let {
+            publisherId = it.issue.series.publisher.resources.firstOrNull { it.source == Source.METRON }?.value
+            comicvineId = it.issue.series.publisher.resources.firstOrNull { it.source == Source.COMICVINE }?.value
+        }
+        if (publisherId == null) {
+            metronInfo?.let {
+                if (it.id != null && it.id!!.source == InformationSource.METRON) {
+                    publisherId = it.publisher.id
+                }
+            }
+        }
+        if (comicvineId == null) {
+            metronInfo?.let {
+                if (it.id != null && it.id!!.source == InformationSource.COMIC_VINE)
+                    comicvineId = it.publisher.id
+            }
+        }
+        if (publisherId == null && comicvineId != null) {
+            publisherId = this.session.getPublisherByComicvine(comicvineId = comicvineId!!)?.id
+        }
+        if (publisherId == null) {
+            publisherId = this.searchPublishers(
+                title = metadata?.issue?.series?.publisher?.title ?: metronInfo?.publisher?.value ?: comicInfo?.publisher,
+            ) ?: return null
+        }
+
+        val publisher = this.session.getPublisher(publisherId = publisherId!!) ?: return null
+        metadata?.let {
+            this.addPublisher(publisher = publisher, metadata = it)
+        }
+        metronInfo?.let {
+            this.addPublisher(publisher = publisher, metronInfo = it)
+        }
+        comicInfo?.let {
+            this.addPublisher(publisher = publisher, comicInfo = it)
+        }
+        return publisher
     }
 
     private fun searchSeries(
         publisherId: Long,
-        title: String,
-        volume: Int? = null,
-        startYear: Int? = null,
-    ): List<SeriesEntry> {
-        val seriesList = this.metron.listSeries(publisherId = publisherId, title = title, volume = volume, startYear = startYear)
-        if (seriesList.isEmpty()) {
-            logger.warn(
-                "No series found with query " +
-                    "{\"publisherId\": $publisherId, \"title\": $title, \"volume\": $volume, \"startYear\": $startYear}",
-            )
+        title: String?,
+    ): Long? {
+        val name = title ?: Console.prompt("Series title")
+        val options = if (name == null)
+            this.session.listSeries(mapOf("publisher_id" to publisherId.toString()))
+        else
+            this.session.listSeries(mapOf("publisher_id" to publisherId.toString(), "name" to name))
+        val index = Console.menu(
+            choices = options.map { "${it.id} | ${it.name} (${it.yearBegan})" },
+            prompt = "Select Metron Series",
+            default = "None of the Above",
+        )
+        if (index != 0) {
+            return options[index - 1].id
         }
-        return seriesList
+        if (!Console.confirm(prompt = "Try Again")) {
+            return null
+        }
+        return this.searchSeries(publisherId = publisherId, title = null)
     }
 
-    private fun pullSeries(
+    private fun addSeries(
+        series: Series,
         metadata: Metadata,
+    ) {
+    }
+
+    private fun addSeries(
+        series: Series,
+        metronInfo: MetronInfo,
+    ) {
+    }
+
+    private fun addSeries(
+        series: Series,
+        comicInfo: ComicInfo,
+    ) {
+    }
+
+    fun fetchSeries(
+        metadata: Metadata?,
+        metronInfo: MetronInfo?,
+        comicInfo: ComicInfo?,
         publisherId: Long,
-    ): Long? {
-        var seriesId = metadata.issue.series.resources.firstOrNull { it.source == Source.METRON }?.value
+    ): Series? {
+        var seriesId: Long? = null
+        metadata?.let {
+            seriesId = it.issue.series.resources.firstOrNull { it.source == Source.COMICVINE }?.value
+        }
         if (seriesId == null) {
-            val comicvineId = metadata.issue.series.resources.firstOrNull { it.source == Source.COMICVINE }?.value
-            if (comicvineId != null) {
-                val tempSeries = this.metron.getSeriesByComicvine(comicvineId = comicvineId)
-                seriesId = tempSeries?.id
+            metronInfo?.let {
+                if (it.id != null && it.id!!.source == InformationSource.COMIC_VINE) {
+                    seriesId = it.series.id
+                }
             }
         }
         if (seriesId == null) {
-            var seriesTitle: String = metadata.issue.series.title
-            var seriesVolume: Int? = metadata.issue.series.volume
-            var seriesStartYear: Int? = metadata.issue.series.startYear
-            do {
-                val seriesList = this.searchSeries(
-                    publisherId = publisherId,
-                    title = seriesTitle,
-                    volume = seriesVolume,
-                    startYear = seriesStartYear,
-                ).sorted()
-                val index = Console.menu(
-                    choices = seriesList.map { "${it.id} | ${it.name}" },
-                    prompt = "Select Metron Series",
-                    default = "None of the Above",
-                )
-                if (index == 0) {
-                    if (seriesStartYear != null) {
-                        seriesStartYear = null
-                    } else if (seriesVolume != null) {
-                        seriesVolume = null
-                    } else if (Console.confirm(prompt = "Try again")) {
-                        seriesTitle = Console.prompt(prompt = "Series title") ?: return null
-                    } else {
-                        return null
-                    }
-                } else {
-                    seriesId = seriesList[index - 1].id
-                }
-            } while (seriesId == null)
-        } else {
-            logger.info("Found existing Series id")
+            seriesId = this.searchSeries(
+                publisherId = publisherId,
+                title = metadata?.issue?.series?.title ?: metronInfo?.series?.name ?: comicInfo?.series,
+            ) ?: return null
         }
-        val series = this.metron.getSeries(seriesId = seriesId) ?: return null
-        val resources = metadata.issue.series.resources.toMutableSet()
-        resources.add(Resource(source = Source.METRON, value = seriesId))
-        if (series.comicvineId != null) {
-            resources.add(Resource(source = Source.COMICVINE, value = series.comicvineId))
-        }
-        metadata.issue.series.resources = resources.toList()
-        if (series.seriesType.name.equals("Hard Cover", ignoreCase = true)) {
-            metadata.issue.format = Format.HARDCOVER
-        } else {
-            metadata.issue.format = series.seriesType.name.asEnumOrNull<Format>() ?: metadata.issue.format
-        }
-        metadata.issue.series.startYear = series.yearBegan
-        metadata.issue.series.title = series.name
-        metadata.issue.series.volume = series.volume
 
-        return seriesId
+        val series = this.session.getSeries(seriesId = seriesId!!) ?: return null
+        metadata?.let {
+            this.addSeries(series = series, metadata = it)
+        }
+        metronInfo?.let {
+            this.addSeries(series = series, metronInfo = it)
+        }
+        comicInfo?.let {
+            this.addSeries(series = series, comicInfo = it)
+        }
+        return series
     }
 
-    private fun searchIssue(
+    private fun searchIssues(
         seriesId: Long,
-        number: String? = null,
-    ): List<IssueEntry> {
-        val issues = this.metron.listIssues(seriesId = seriesId, number = number)
-        if (issues.isEmpty()) {
-            logger.warn("No issues found with query {\"seriesId\": $seriesId, \"number\": $number}")
+        number: String?,
+    ): Long? {
+        val options = emptyList<IssueEntry>()
+        val index = Console.menu(
+            choices = options.map { "${it.id} | ${it.number} - ${it.name}" },
+            prompt = "Select Comicvine Issue",
+            default = "None of the Above",
+        )
+        if (index != 0) {
+            return options[index - 1].id
         }
-        return issues
+        if (number == null) {
+            return null
+        }
+        if (!Console.confirm(prompt = "Try Again")) {
+            return null
+        }
+        return this.searchIssues(seriesId = seriesId, number = null)
     }
 
-    private fun pullIssue(
+    private fun addIssue(
+        issue: Issue,
         metadata: Metadata,
+    ) {
+    }
+
+    private fun addIssue(
+        issue: Issue,
+        metronInfo: MetronInfo,
+    ) {
+    }
+
+    private fun addIssue(
+        issue: Issue,
+        comicInfo: ComicInfo,
+    ) {
+    }
+
+    fun fetchIssue(
+        metadata: Metadata?,
+        metronInfo: MetronInfo?,
+        comicInfo: ComicInfo?,
         seriesId: Long,
-    ): Long? {
-        var issueId = metadata.issue.resources.firstOrNull { it.source == Source.METRON }?.value
+    ): Issue? {
+        var issueId: Long? = null
+        metadata?.let {
+            issueId = it.issue.resources.firstOrNull { it.source == Source.COMICVINE }?.value
+        }
         if (issueId == null) {
-            val comicvineId = metadata.issue.resources.firstOrNull { it.source == Source.COMICVINE }?.value
-            if (comicvineId != null) {
-                val tempIssue = this.metron.getIssueByComicvine(comicvineId = comicvineId)
-                issueId = tempIssue?.id
+            metronInfo?.let {
+                if (it.id != null && it.id!!.source == InformationSource.COMIC_VINE) {
+                    issueId = it.id!!.value
+                }
             }
         }
         if (issueId == null) {
-            var issueNumber: String? = metadata.issue.number
-            do {
-                val issues = this.searchIssue(seriesId = seriesId, number = issueNumber).sorted()
-                val index = Console.menu(
-                    choices = issues.map { "${it.id} | ${it.number} - ${it.name}" },
-                    prompt = "Select Metron Issue",
-                    default = "None of the Above",
-                )
-                if (index == 0) {
-                    if (Console.confirm(prompt = "Try again")) {
-                        issueNumber = Console.prompt(prompt = "Issue number") ?: return null
-                    } else {
-                        return null
-                    }
-                } else {
-                    issueId = issues[index - 1].id
-                }
-            } while (issueId == null)
-        } else {
-            logger.info("Found existing Issue id")
+            issueId = this.searchIssues(
+                seriesId = seriesId,
+                number = metadata?.issue?.number ?: metronInfo?.number ?: comicInfo?.number,
+            ) ?: return null
         }
-        val issue = this.metron.getIssue(issueId = issueId) ?: return null
-        val resources = metadata.issue.resources.toMutableSet()
-        resources.add(Resource(source = Source.METRON, value = issueId))
-        if (issue.comicvineId != null) {
-            resources.add(Resource(source = Source.COMICVINE, value = issue.comicvineId))
-        }
-        metadata.issue.resources = resources.toList()
-        metadata.issue.characters = issue.characters.map {
-            TitledResource(
-                title = it.name,
-                resources = listOf(Resource(source = Source.METRON, value = it.id)),
-            )
-        }
-        metadata.issue.coverDate = issue.coverDate
-        metadata.issue.credits = issue.credits.map {
-            Credit(
-                creator = TitledResource(
-                    title = it.creator,
-                    resources = listOf(Resource(source = Source.METRON, value = it.id)),
-                ),
-                roles = it.roles.map {
-                    TitledResource(
-                        title = it.name,
-                        resources = listOf(Resource(source = Source.METRON, value = it.id)),
-                    )
-                },
-            )
-        }
-        metadata.issue.genres = issue.series.genres.map {
-            TitledResource(title = it.name, resources = listOf(Resource(source = Source.METRON, value = it.id)))
-        }
-        metadata.issue.number = issue.number
-        metadata.issue.pageCount = issue.pageCount ?: 0
-        metadata.issue.storeDate = issue.storeDate
-        metadata.issue.storyArcs = issue.storyArcs.map {
-            StoryArc(
-                resources = listOf(Resource(source = Source.METRON, value = it.id)),
-                title = it.name,
-            )
-        }
-        metadata.issue.summary = issue.description
-        metadata.issue.teams = issue.teams.map {
-            TitledResource(
-                title = it.name,
-                resources = listOf(Resource(source = Source.METRON, value = it.id)),
-            )
-        }
-        metadata.issue.title = issue.title
 
-        return issueId
+        val issue = this.session.getIssue(issueId = issueId!!) ?: return null
+        metadata?.let {
+            this.addIssue(issue = issue, metadata = it)
+        }
+        metronInfo?.let {
+            this.addIssue(issue = issue, metronInfo = it)
+        }
+        comicInfo?.let {
+            this.addIssue(issue = issue, comicInfo = it)
+        }
+        return issue
     }
 
-    fun pullMetadata(metadata: Metadata): Boolean {
-        val publisherId = this.pullPublisher(metadata = metadata) ?: return false
-        val seriesId = this.pullSeries(metadata = metadata, publisherId = publisherId) ?: return false
-        val issueId = this.pullIssue(metadata = metadata, seriesId = seriesId) ?: return false
+    override fun fetch(
+        metadata: Metadata?,
+        metronInfo: MetronInfo?,
+        comicInfo: ComicInfo?,
+    ): Boolean {
+        if (metadata == null && metronInfo == null && comicInfo == null) {
+            return false
+        }
+
+        val publisher = this.fetchPublisher(metadata = metadata, metronInfo = metronInfo, comicInfo = comicInfo) ?: return false
+        val series = this.fetchSeries(
+            metadata = metadata,
+            metronInfo = metronInfo,
+            comicInfo = comicInfo,
+            publisherId = publisher.id,
+        ) ?: return false
+        val issue = this.fetchIssue(
+            metadata = metadata,
+            metronInfo = metronInfo,
+            comicInfo = comicInfo,
+            seriesId = series.id,
+        ) ?: return false
         return true
     }
 

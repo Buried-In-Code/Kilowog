@@ -84,8 +84,10 @@ data class Metron(private val username: String, private val password: String, pr
         return null
     }
 
-    private fun listPublishers(params: Map<String, String> = emptyMap()): List<PublisherEntry> {
-        val uri = encodeURI(endpoint = "/publisher", params = params)
+    fun listPublishers(params: Map<String, String> = emptyMap()): List<PublisherEntry> {
+        val temp = params.toMutableMap()
+        temp["page"] = temp.getOrDefault("page", 1).toString()
+        val uri = encodeURI(endpoint = "/publisher", params = temp)
         try {
             val content: String = sendRequest(uri = uri) ?: return emptyList()
             val response: ListResponse<PublisherEntry> = Utils.JSON_MAPPER.decodeFromString(content)
@@ -94,12 +96,7 @@ data class Metron(private val username: String, private val password: String, pr
                 cache.insert(url = uri.toString(), response = content)
             }
             if (response.next != null) {
-                val temp = params.toMutableMap()
-                if ("page" in temp) {
-                    temp["page"] = (temp["page"]!!.toInt() + 1).toString()
-                } else {
-                    temp["page"] = 2.toString()
-                }
+                temp["page"] = (temp["page"]!!.toInt() + 1).toString()
                 results.addAll(this.listPublishers(params = temp))
             }
             return results
@@ -107,12 +104,6 @@ data class Metron(private val username: String, private val password: String, pr
             logger.error("Unable to parse response", se)
             return emptyList()
         }
-    }
-
-    @JvmOverloads
-    fun listPublishers(title: String? = null): List<PublisherEntry> {
-        val params: Map<String, String> = if (title.isNullOrBlank()) emptyMap() else mapOf("name" to title)
-        return listPublishers(params = params)
     }
 
     fun getPublisherByComicvine(comicvineId: Long): PublisherEntry? {
@@ -133,8 +124,10 @@ data class Metron(private val username: String, private val password: String, pr
         }
     }
 
-    private fun listSeries(params: Map<String, String> = emptyMap()): List<SeriesEntry> {
-        val uri = encodeURI(endpoint = "/series", params = params)
+    fun listSeries(params: Map<String, String> = emptyMap()): List<SeriesEntry> {
+        val temp = params.toMutableMap()
+        temp["page"] = temp.getOrDefault("page", 1).toString()
+        val uri = encodeURI(endpoint = "/series", params = temp)
         try {
             val content: String = sendRequest(uri = uri) ?: return emptyList()
             val response: ListResponse<SeriesEntry> = Utils.JSON_MAPPER.decodeFromString(content)
@@ -143,12 +136,7 @@ data class Metron(private val username: String, private val password: String, pr
                 cache.insert(url = uri.toString(), response = content)
             }
             if (response.next != null) {
-                val temp = params.toMutableMap()
-                if ("page" in temp) {
-                    temp["page"] = (temp["page"]!!.toInt() + 1).toString()
-                } else {
-                    temp["page"] = 2.toString()
-                }
+                temp["page"] = (temp["page"]!!.toInt() + 1).toString()
                 results.addAll(this.listSeries(params = temp))
             }
             return results
@@ -200,7 +188,9 @@ data class Metron(private val username: String, private val password: String, pr
     }
 
     private fun listIssues(params: Map<String, String> = emptyMap()): List<IssueEntry> {
-        val uri = encodeURI(endpoint = "/issue", params = params)
+        val temp = params.toMutableMap()
+        temp["page"] = temp.getOrDefault("page", 1).toString()
+        val uri = encodeURI(endpoint = "/issue", params = temp)
         try {
             val content: String = sendRequest(uri = uri) ?: return emptyList()
             val response: ListResponse<IssueEntry> = Utils.JSON_MAPPER.decodeFromString(content)
@@ -209,12 +199,7 @@ data class Metron(private val username: String, private val password: String, pr
                 cache.insert(url = uri.toString(), response = content)
             }
             if (response.next != null) {
-                val temp = params.toMutableMap()
-                if ("page" in temp) {
-                    temp["page"] = (temp["page"]!!.toInt() + 1).toString()
-                } else {
-                    temp["page"] = 2.toString()
-                }
+                temp["page"] = (temp["page"]!!.toInt() + 1).toString()
                 results.addAll(this.listIssues(params = temp))
             }
             return results

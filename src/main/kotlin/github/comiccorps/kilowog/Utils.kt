@@ -92,6 +92,18 @@ object Utils {
         }
     }
 
+    fun <T, K, V> Iterable<T>.associateNotNull(transform: (T) -> Pair<K?, V?>): Map<K, V> {
+        val resultMap = mutableMapOf<K, V>()
+        for (item in this) {
+            val pair = transform(item)
+            if (pair.first == null || pair.second == null) {
+                continue
+            }
+            resultMap[pair.first!!] = pair.second!!
+        }
+        return resultMap
+    }
+
     fun sanitize(value: String): String {
         var output: String = value.replace("[\\\\/:*?\"<>|]+".toRegex(), "")
         output = output.replace("-", " ")
