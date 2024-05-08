@@ -1,7 +1,7 @@
 import com.github.benmanes.gradle.versions.updates.DependencyUpdatesTask
 
 plugins {
-    kotlin("jvm") version "1.9.22"
+    kotlin("jvm") version "1.9.24"
     kotlin("plugin.serialization") version "1.9.22"
     application
     id("com.github.ben-manes.versions") version "0.51.0"
