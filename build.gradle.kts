@@ -5,7 +5,7 @@ plugins {
     kotlin("plugin.serialization") version "1.9.22"
     application
     id("com.github.ben-manes.versions") version "0.51.0"
-    id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
 }
 
 group = "github.comiccorps"
