@@ -1,260 +1,374 @@
 package github.comiccorps.kilowog.services
 
-import com.sksamuel.hoplite.Secret
+import github.buriedincode.kalibak.ServiceException
+import github.buriedincode.kalibak.schemas.Series
+import github.comiccorps.kilowog.Settings
 import github.comiccorps.kilowog.Utils
-import github.comiccorps.kilowog.services.metron.ListResponse
-import github.comiccorps.kilowog.services.metron.issue.Issue
-import github.comiccorps.kilowog.services.metron.issue.IssueEntry
-import github.comiccorps.kilowog.services.metron.publisher.Publisher
-import github.comiccorps.kilowog.services.metron.publisher.PublisherEntry
-import github.comiccorps.kilowog.services.metron.series.Series
-import github.comiccorps.kilowog.services.metron.series.SeriesEntry
-import kotlinx.serialization.SerializationException
-import org.apache.logging.log4j.Level
+import github.comiccorps.kilowog.console.Console
+import github.comiccorps.kilowog.models.ComicInfo
+import github.comiccorps.kilowog.models.Metadata
+import github.comiccorps.kilowog.models.MetronInfo
+import github.comiccorps.kilowog.models.metadata.Resource
+import github.comiccorps.kilowog.models.metadata.Source
+import github.comiccorps.kilowog.models.metroninfo.InformationSource
 import org.apache.logging.log4j.kotlin.Logging
-import java.io.IOException
-import java.net.URI
-import java.net.URLEncoder
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
-import java.nio.charset.StandardCharsets
-import java.time.Duration
-import java.util.Base64
-import java.util.stream.Collectors
+import github.buriedincode.kalibak.Metron as Kalibak
 
-data class Metron(private val username: String, private val password: String, private val cache: SQLiteCache? = null) {
-    constructor(
-        username: String,
-        password: Secret,
-        cache: SQLiteCache? = null,
-    ) : this(username = username, password = password.value, cache = cache)
+class Metron(settings: Settings.Metron) : BaseService() {
+    private val session = Kalibak(
+        username = settings.username!!,
+        password = settings.password!!,
+        cache = SQLiteCache(path = (Utils.CACHE_ROOT / "kalibak.sqlite"), expiry = 14),
+    )
 
-    private fun encodeURI(
-        endpoint: String,
-        params: Map<String, String> = HashMap(),
-    ): URI {
-        var encodedUrl = "$BASE_API$endpoint/"
-        if (params.isNotEmpty()) {
-            encodedUrl = params.keys
-                .stream()
-                .sorted()
-                .map {
-                    "$it=${URLEncoder.encode(params[it], StandardCharsets.UTF_8)}"
+    private fun getSeriesByComicvine(comicvineId: Long?): Long? {
+        return comicvineId?.let {
+            try {
+                this.session.listSeries(params = mapOf("cv_id" to it)).firstOrNull()?.id
+            } catch (se: ServiceException) {
+                null
+            }
+        }
+    }
+
+    private fun getSeries(title: String?): Long? {
+        val name = title ?: Console.prompt("Series title") ?: return null
+        return try {
+            val options = this.session.listSeries(params = mapOf("name" to name)).sortedBy { it.name }
+            if (options.isEmpty()) {
+                logger.warn("Unable to find any Series with the title: '$title'")
+                return null
+            }
+            val index = Console.menu(
+                choices = options.map { if (it.volume > 1) "${it.id} | ${it.name} v${it.volume}" else "${it.id} | ${it.name}" },
+                prompt = "Metron Series",
+                default = "None of the Above",
+            )
+            if (index == 0 && Console.confirm("Try Again")) {
+                getSeries(title = null)
+            } else {
+                options.getOrNull(index - 1)?.id
+            }
+        } catch (se: ServiceException) {
+            null
+        }
+    }
+
+    fun fetchSeries(details: Details): Series? {
+        val seriesId = details.series.metron
+            ?: getSeriesByComicvine(comicvineId = details.series.comicvine)
+            ?: getSeries(title = details.series.search)
+            ?: return null
+        return try {
+            this.session.getSeries(id = seriesId).also {
+                details.series.metron = seriesId
+            }
+        } catch (se: ServiceException) {
+            null
+        }
+    }
+    
+    private fun getIssueByComicvine(comicvineId: Long?): Long? {
+        return comicvineId?.let {
+            try {
+                this.session.listIssues(params = mapOf("cv_id" to it)).firstOrNull()?.id
+            } catch (se: ServiceException) {
+                null
+            }
+        }
+    }
+
+    private fun getIssue(seriesId: Long, number: String?): Long? {
+        val name = title ?: Console.prompt("Series title") ?: return null
+        return try {
+            val options = this.session.listSeries(params = mapOf("name" to name)).sortedBy { it.name }
+            if (options.isEmpty()) {
+                logger.warn("Unable to find any Series with the title: '$title'")
+                return null
+            }
+            val index = Console.menu(
+                choices = options.map { if (it.volume > 1) "${it.id} | ${it.name} v${it.volume}" else "${it.id} | ${it.name}" },
+                prompt = "Metron Series",
+                default = "None of the Above",
+            )
+            if (index == 0 && Console.confirm("Try Again")) {
+                getSeries(title = null)
+            } else {
+                options.getOrNull(index - 1)?.id
+            }
+        } catch (se: ServiceException) {
+            null
+        }
+    }
+
+    fun fetchIssue(seriesId: Long, details: Details): Issue? {
+        val issueId = details.issue.metron
+            ?: getIssueByComicvine(comicvineId = details.issue.comicvine)
+            ?: getIssue(seriesId= seriesId, number = details.issue.search)
+            ?: return null
+        return try {
+            this.session.getIssue(id = issueId).also {
+                details.issue.metron = issueId
+            }
+        } catch (se: ServiceException) {
+            null
+        }
+    }
+
+    private fun addPublisher(
+        publisher: Publisher,
+        metadata: Metadata,
+    ) {
+        val resources = metadata.issue.series.publisher.resources.toMutableSet()
+        resources.add(Resource(source = Source.METRON, value = publisher.id))
+        metadata.issue.series.publisher.resources = resources.toList()
+        metadata.issue.series.publisher.title = publisher.name
+    }
+
+    private fun addPublisher(
+        publisher: Publisher,
+        metronInfo: MetronInfo,
+    ) {
+        if (metronInfo.id == null || metronInfo.id!!.source == InformationSource.METRON) {
+            metronInfo.publisher.id = publisher.id
+        }
+        metronInfo.publisher.value = publisher.name
+    }
+
+    private fun addPublisher(
+        publisher: Publisher,
+        comicInfo: ComicInfo,
+    ) {
+        comicInfo.publisher = publisher.name
+    }
+
+    fun fetchPublisher(
+        metadata: Metadata?,
+        metronInfo: MetronInfo?,
+        comicInfo: ComicInfo?,
+    ): Publisher? {
+        var publisherId: Long? = null
+        var comicvineId: Long? = null
+        metadata?.let {
+            publisherId = it.issue.series.publisher.resources.firstOrNull { it.source == Source.METRON }?.value
+            comicvineId = it.issue.series.publisher.resources.firstOrNull { it.source == Source.COMICVINE }?.value
+        }
+        if (publisherId == null) {
+            metronInfo?.let {
+                if (it.id != null && it.id!!.source == InformationSource.METRON) {
+                    publisherId = it.publisher.id
                 }
-                .collect(Collectors.joining("&", "$encodedUrl?", ""))
-        }
-        return URI.create(encodedUrl)
-    }
-
-    private fun sendRequest(uri: URI): String? {
-        if (this.cache != null) {
-            val cachedResponse = cache.select(url = uri.toString())
-            if (cachedResponse != null) {
-                logger.debug("Using cached response for $uri")
-                return cachedResponse
             }
         }
-        try {
-            val request = HttpRequest.newBuilder()
-                .uri(uri)
-                .setHeader("Accept", "application/json")
-                .setHeader("User-Agent", "Kilowog-v${Utils.VERSION}/Kotlin-v${KotlinVersion.CURRENT}")
-                .setHeader("Authorization", getBasicAuthenticationHeader(username, password))
-                .GET()
-                .build()
-            val response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString())
-            val level = when {
-                response.statusCode() in (100 until 200) -> Level.WARN
-                response.statusCode() in (200 until 300) -> Level.DEBUG
-                response.statusCode() in (300 until 400) -> Level.INFO
-                response.statusCode() in (400 until 500) -> Level.WARN
-                else -> Level.ERROR
+        if (comicvineId == null) {
+            metronInfo?.let {
+                if (it.id != null && it.id!!.source == InformationSource.COMIC_VINE) {
+                    comicvineId = it.publisher.id
+                }
             }
-            logger.log(level, "GET: ${response.statusCode()} - $uri")
-            if (response.statusCode() == 200) {
-                return response.body()
-            }
-            logger.error(response.body())
-        } catch (ioe: IOException) {
-            logger.error("Unable to make request to: ${uri.path}", ioe)
-        } catch (ie: InterruptedException) {
-            logger.error("Unable to make request to: ${uri.path}", ie)
         }
-        return null
-    }
-
-    fun listPublishers(params: Map<String, String> = emptyMap()): List<PublisherEntry> {
-        val temp = params.toMutableMap()
-        temp["page"] = temp.getOrDefault("page", 1).toString()
-        val uri = encodeURI(endpoint = "/publisher", params = temp)
-        try {
-            val content: String = sendRequest(uri = uri) ?: return emptyList()
-            val response: ListResponse<PublisherEntry> = Utils.JSON_MAPPER.decodeFromString(content)
-            val results = response.results
-            if (results.isNotEmpty() && this.cache != null) {
-                cache.insert(url = uri.toString(), response = content)
-            }
-            if (response.next != null) {
-                temp["page"] = (temp["page"]!!.toInt() + 1).toString()
-                results.addAll(this.listPublishers(params = temp))
-            }
-            return results
-        } catch (se: SerializationException) {
-            logger.error("Unable to parse response", se)
-            return emptyList()
+        if (publisherId == null && comicvineId != null) {
+            publisherId = this.session.getPublisherByComicvine(comicvineId = comicvineId!!)?.id
         }
-    }
-
-    fun getPublisherByComicvine(comicvineId: Long): PublisherEntry? {
-        return listPublishers(params = mutableMapOf("cv_id" to comicvineId.toString())).firstOrNull()
-    }
-
-    fun getPublisher(publisherId: Long): Publisher? {
-        val uri = encodeURI(endpoint = "/publisher/$publisherId")
-        try {
-            val content: String = sendRequest(uri = uri) ?: return null
-            if (this.cache != null) {
-                cache.insert(url = uri.toString(), response = content)
-            }
-            return Utils.JSON_MAPPER.decodeFromString(content)
-        } catch (se: SerializationException) {
-            logger.error("Unable to parse response", se)
-            return null
+        if (publisherId == null) {
+            publisherId = this.searchPublishers(
+                title = metadata?.issue?.series?.publisher?.title ?: metronInfo?.publisher?.value ?: comicInfo?.publisher,
+            ) ?: return null
         }
-    }
 
-    fun listSeries(params: Map<String, String> = emptyMap()): List<SeriesEntry> {
-        val temp = params.toMutableMap()
-        temp["page"] = temp.getOrDefault("page", 1).toString()
-        val uri = encodeURI(endpoint = "/series", params = temp)
-        try {
-            val content: String = sendRequest(uri = uri) ?: return emptyList()
-            val response: ListResponse<SeriesEntry> = Utils.JSON_MAPPER.decodeFromString(content)
-            val results = response.results
-            if (results.isNotEmpty() && this.cache != null) {
-                cache.insert(url = uri.toString(), response = content)
-            }
-            if (response.next != null) {
-                temp["page"] = (temp["page"]!!.toInt() + 1).toString()
-                results.addAll(this.listSeries(params = temp))
-            }
-            return results
-        } catch (se: SerializationException) {
-            logger.error("Unable to parse response", se)
-            return emptyList()
+        val publisher = this.session.getPublisher(publisherId = publisherId!!) ?: return null
+        metadata?.let {
+            this.addPublisher(publisher = publisher, metadata = it)
         }
+        metronInfo?.let {
+            this.addPublisher(publisher = publisher, metronInfo = it)
+        }
+        comicInfo?.let {
+            this.addPublisher(publisher = publisher, comicInfo = it)
+        }
+        return publisher
     }
 
-    @JvmOverloads
-    fun listSeries(
+    private fun searchSeries(
         publisherId: Long,
-        title: String? = null,
-        volume: Int? = null,
-        startYear: Int? = null,
-    ): List<SeriesEntry> {
-        val params: MutableMap<String, String> = mutableMapOf(
-            "publisher_id" to publisherId.toString(),
+        title: String?,
+    ): Long? {
+        val name = title ?: Console.prompt("Series title")
+        val options = if (name == null) {
+            this.session.listSeries(mapOf("publisher_id" to publisherId.toString()))
+        } else {
+            this.session.listSeries(mapOf("publisher_id" to publisherId.toString(), "name" to name))
+        }
+        val index = Console.menu(
+            choices = options.map { "${it.id} | ${it.name} (${it.yearBegan})" },
+            prompt = "Select Metron Series",
+            default = "None of the Above",
         )
-        if (!title.isNullOrBlank()) {
-            params["name"] = title
+        if (index != 0) {
+            return options[index - 1].id
         }
-        if (volume != null) {
-            params["volume"] = volume.toString()
-        }
-        if (startYear != null) {
-            params["start_year"] = startYear.toString()
-        }
-        return listSeries(params = params)
-    }
-
-    fun getSeriesByComicvine(comicvineId: Long): SeriesEntry? {
-        return listSeries(params = mutableMapOf("cv_id" to comicvineId.toString())).firstOrNull()
-    }
-
-    fun getSeries(seriesId: Long): Series? {
-        val uri = encodeURI(endpoint = "/series/$seriesId")
-        try {
-            val content: String = sendRequest(uri = uri) ?: return null
-            val response: Series = Utils.JSON_MAPPER.decodeFromString(content)
-            if (this.cache != null) {
-                cache.insert(url = uri.toString(), response = content)
-            }
-            return response
-        } catch (se: SerializationException) {
-            logger.error("Unable to parse response", se)
+        if (!Console.confirm(prompt = "Try Again")) {
             return null
         }
+        return this.searchSeries(publisherId = publisherId, title = null)
     }
 
-    private fun listIssues(params: Map<String, String> = emptyMap()): List<IssueEntry> {
-        val temp = params.toMutableMap()
-        temp["page"] = temp.getOrDefault("page", 1).toString()
-        val uri = encodeURI(endpoint = "/issue", params = temp)
-        try {
-            val content: String = sendRequest(uri = uri) ?: return emptyList()
-            val response: ListResponse<IssueEntry> = Utils.JSON_MAPPER.decodeFromString(content)
-            val results = response.results
-            if (results.isNotEmpty() && this.cache != null) {
-                cache.insert(url = uri.toString(), response = content)
-            }
-            if (response.next != null) {
-                temp["page"] = (temp["page"]!!.toInt() + 1).toString()
-                results.addAll(this.listIssues(params = temp))
-            }
-            return results
-        } catch (se: SerializationException) {
-            logger.error("Unable to parse response", se)
-            return emptyList()
+    private fun addSeries(
+        series: Series,
+        metadata: Metadata,
+    ) {
+    }
+
+    private fun addSeries(
+        series: Series,
+        metronInfo: MetronInfo,
+    ) {
+    }
+
+    private fun addSeries(
+        series: Series,
+        comicInfo: ComicInfo,
+    ) {
+    }
+
+    fun fetchSeries(
+        metadata: Metadata?,
+        metronInfo: MetronInfo?,
+        comicInfo: ComicInfo?,
+        publisherId: Long,
+    ): Series? {
+        var seriesId: Long? = null
+        metadata?.let {
+            seriesId = it.issue.series.resources.firstOrNull { it.source == Source.COMICVINE }?.value
         }
+        if (seriesId == null) {
+            metronInfo?.let {
+                if (it.id != null && it.id!!.source == InformationSource.COMIC_VINE) {
+                    seriesId = it.series.id
+                }
+            }
+        }
+        if (seriesId == null) {
+            seriesId = this.searchSeries(
+                publisherId = publisherId,
+                title = metadata?.issue?.series?.title ?: metronInfo?.series?.name ?: comicInfo?.series,
+            ) ?: return null
+        }
+
+        val series = this.session.getSeries(seriesId = seriesId!!) ?: return null
+        metadata?.let {
+            this.addSeries(series = series, metadata = it)
+        }
+        metronInfo?.let {
+            this.addSeries(series = series, metronInfo = it)
+        }
+        comicInfo?.let {
+            this.addSeries(series = series, comicInfo = it)
+        }
+        return series
     }
 
-    @JvmOverloads
-    fun listIssues(
+    private fun searchIssues(
         seriesId: Long,
-        number: String? = null,
-    ): List<IssueEntry> {
-        val params: MutableMap<String, String> = mutableMapOf(
-            "series_id" to seriesId.toString(),
+        number: String?,
+    ): Long? {
+        val options = emptyList<IssueEntry>()
+        val index = Console.menu(
+            choices = options.map { "${it.id} | ${it.number} - ${it.name}" },
+            prompt = "Select Comicvine Issue",
+            default = "None of the Above",
         )
-        if (!number.isNullOrBlank()) {
-            params["number"] = number
+        if (index != 0) {
+            return options[index - 1].id
         }
-        return listIssues(params = params)
-    }
-
-    fun getIssueByComicvine(comicvineId: Long): IssueEntry? {
-        return listIssues(params = mutableMapOf("cv_id" to comicvineId.toString())).firstOrNull()
-    }
-
-    fun getIssue(issueId: Long): Issue? {
-        val uri = encodeURI(endpoint = "/issue/$issueId")
-        try {
-            val content: String = sendRequest(uri = uri) ?: return null
-            val response: Issue = Utils.JSON_MAPPER.decodeFromString(content)
-            if (this.cache != null) {
-                cache.insert(url = uri.toString(), response = content)
-            }
-            return response
-        } catch (se: SerializationException) {
-            logger.error("Unable to parse response", se)
+        if (number == null) {
             return null
         }
-    }
-
-    companion object : Logging {
-        private const val BASE_API = "https://metron.cloud/api"
-        private val CLIENT = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.ALWAYS)
-            .connectTimeout(Duration.ofSeconds(5))
-            .build()
-
-        private fun getBasicAuthenticationHeader(
-            username: String,
-            password: String,
-        ): String {
-            val valueToEncode = "$username:$password"
-            return "Basic " + Base64.getEncoder().encodeToString(valueToEncode.toByteArray())
+        if (!Console.confirm(prompt = "Try Again")) {
+            return null
         }
+        return this.searchIssues(seriesId = seriesId, number = null)
     }
+
+    private fun addIssue(
+        issue: Issue,
+        metadata: Metadata,
+    ) {
+    }
+
+    private fun addIssue(
+        issue: Issue,
+        metronInfo: MetronInfo,
+    ) {
+    }
+
+    private fun addIssue(
+        issue: Issue,
+        comicInfo: ComicInfo,
+    ) {
+    }
+
+    fun fetchIssue(
+        metadata: Metadata?,
+        metronInfo: MetronInfo?,
+        comicInfo: ComicInfo?,
+        seriesId: Long,
+    ): Issue? {
+        var issueId: Long? = null
+        metadata?.let {
+            issueId = it.issue.resources.firstOrNull { it.source == Source.COMICVINE }?.value
+        }
+        if (issueId == null) {
+            metronInfo?.let {
+                if (it.id != null && it.id!!.source == InformationSource.COMIC_VINE) {
+                    issueId = it.id!!.value
+                }
+            }
+        }
+        if (issueId == null) {
+            issueId = this.searchIssues(
+                seriesId = seriesId,
+                number = metadata?.issue?.number ?: metronInfo?.number ?: comicInfo?.number,
+            ) ?: return null
+        }
+
+        val issue = this.session.getIssue(issueId = issueId!!) ?: return null
+        metadata?.let {
+            this.addIssue(issue = issue, metadata = it)
+        }
+        metronInfo?.let {
+            this.addIssue(issue = issue, metronInfo = it)
+        }
+        comicInfo?.let {
+            this.addIssue(issue = issue, comicInfo = it)
+        }
+        return issue
+    }
+
+    override fun fetch(
+        metadata: Metadata?,
+        metronInfo: MetronInfo?,
+        comicInfo: ComicInfo?,
+    ): Boolean {
+        if (metadata == null && metronInfo == null && comicInfo == null) {
+            return false
+        }
+
+        val publisher = this.fetchPublisher(metadata = metadata, metronInfo = metronInfo, comicInfo = comicInfo) ?: return false
+        val series = this.fetchSeries(
+            metadata = metadata,
+            metronInfo = metronInfo,
+            comicInfo = comicInfo,
+            publisherId = publisher.id,
+        ) ?: return false
+        val issue = this.fetchIssue(
+            metadata = metadata,
+            metronInfo = metronInfo,
+            comicInfo = comicInfo,
+            seriesId = series.id,
+        ) ?: return false
+        return true
+    }
+
+    companion object : Logging
 }

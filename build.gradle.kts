@@ -1,17 +1,16 @@
 import com.github.benmanes.gradle.versions.updates.DependencyUpdatesTask
 
 plugins {
-    kotlin("jvm") version "1.9.23"
-    kotlin("plugin.serialization") version "1.9.23"
+    kotlin("jvm") version "2.0.0"
+    kotlin("plugin.serialization") version "2.0.0"
     application
     id("com.github.ben-manes.versions") version "0.51.0"
-    id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
 }
 
 group = "github.comiccorps"
 version = "0.2.1"
 
-println("Kilowog v$version")
 println("Kotlin v${KotlinVersion.CURRENT}")
 println("Java v${System.getProperty("java.version")}")
 println("Arch: ${System.getProperty("os.arch")}")
@@ -25,9 +24,10 @@ dependencies {
     implementation("org.apache.commons", "commons-compress", "1.26.1")
     implementation("com.github.junrar", "junrar", "7.5.5")
     implementation("com.sksamuel.hoplite", "hoplite-core", "2.7.5")
-    implementation("org.jetbrains.kotlinx", "kotlinx-datetime", "0.5.0")
+    implementation("org.jetbrains.kotlinx", "kotlinx-datetime", "0.6.0")
     implementation("org.jetbrains.kotlinx", "kotlinx-serialization-json", "1.6.3")
-    runtimeOnly("org.xerial", "sqlite-jdbc", "3.45.1.0")
+    implementation("github.buriedincode", "Kalibak", "0.2.0")
+    runtimeOnly("org.xerial", "sqlite-jdbc", "3.45.3.0")
 
     // XmlUtil
     val xmlutilVersion = "0.86.3"
@@ -73,6 +73,7 @@ fun isNonStable(version: String): Boolean {
 }
 
 tasks.withType<DependencyUpdatesTask> {
+    gradleReleaseChannel = "current"
     resolutionStrategy {
         componentSelection {
             all {
