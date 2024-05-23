@@ -1,67 +1,48 @@
 import com.github.benmanes.gradle.versions.updates.DependencyUpdatesTask
 
 plugins {
-    kotlin("jvm") version "2.0.0"
-    kotlin("plugin.serialization") version "2.0.0"
-    application
-    id("com.github.ben-manes.versions") version "0.51.0"
-    id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlinx.serialization) apply false
+    alias(libs.plugins.versions)
+    alias(libs.plugins.ktlint)
 }
 
-group = "github.comiccorps"
-version = "0.2.1"
+allprojects {
+    group = "github.buriedincode"
+    version = "0.2.0"
 
-println("Kotlin v${KotlinVersion.CURRENT}")
-println("Java v${System.getProperty("java.version")}")
-println("Arch: ${System.getProperty("os.arch")}")
+    repositories {
+        mavenCentral()
+        mavenLocal()
+    }
 
-repositories {
-    mavenCentral()
-    mavenLocal()
-}
+    apply(plugin = "org.jlleitschuh.gradle.ktlint")
 
-dependencies {
-    implementation("org.apache.commons", "commons-compress", "1.26.1")
-    implementation("com.github.junrar", "junrar", "7.5.5")
-    implementation("com.sksamuel.hoplite", "hoplite-core", "2.7.5")
-    implementation("org.jetbrains.kotlinx", "kotlinx-datetime", "0.6.0")
-    implementation("org.jetbrains.kotlinx", "kotlinx-serialization-json", "1.6.3")
-    implementation("github.buriedincode", "Kalibak", "0.2.0")
-    runtimeOnly("org.xerial", "sqlite-jdbc", "3.45.3.0")
-
-    // XmlUtil
-    val xmlutilVersion = "0.86.3"
-    implementation("io.github.pdvrieze.xmlutil", "core-jvm", xmlutilVersion)
-    implementation("io.github.pdvrieze.xmlutil", "serialization-jvm", xmlutilVersion)
-
-    // Log4j2
-    implementation("org.apache.logging.log4j", "log4j-api-kotlin", "1.4.0")
-    runtimeOnly("org.apache.logging.log4j", "log4j-slf4j2-impl", "2.23.1")
-}
-
-kotlin {
-    jvmToolchain(17)
-}
-
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(17))
+    configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
+        version.set("1.2.1")
     }
 }
 
-application {
-    mainClass.set("github.comiccorps.kilowog.AppKt")
-    applicationName = "Kilowog"
-}
+subprojects {
+    apply(plugin = "org.jetbrains.kotlin.jvm")
+    apply(plugin = "org.jetbrains.kotlin.plugin.serialization")
 
-configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
-    version.set("1.2.1")
-}
+    dependencies {
+        implementation(rootProject.libs.kotlinx.datetime)
+        implementation(rootProject.libs.kotlinx.serialization.json)
+        implementation(rootProject.libs.log4j2.api.kotlin)
+        runtimeOnly(rootProject.libs.log4j2.slf4j2.impl)
+        runtimeOnly(rootProject.libs.sqlite.jdbc)
+    }
 
-tasks {
-    val run by existing(JavaExec::class)
-    run.configure {
-        standardInput = System.`in`
+    kotlin {
+        jvmToolchain(17)
+    }
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
     }
 }
 
@@ -72,7 +53,7 @@ fun isNonStable(version: String): Boolean {
     return isStable.not()
 }
 
-tasks.withType<DependencyUpdatesTask> {
+tasks.withType<com.github.benmanes.gradle.versions.updates.DependencyUpdatesTask> {
     gradleReleaseChannel = "current"
     resolutionStrategy {
         componentSelection {

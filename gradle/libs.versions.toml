@@ -1,0 +1,44 @@
+[versions]
+kotlin = "2.0.0"
+
+# Libraries
+commons-compress = "1.26.1"
+hoplite = "2.7.5"
+junit = "5.10.2"
+junrar = "7.5.5"
+kotlinx-datetime = "0.6.0"
+kotlinx-serialization = "1.6.3"
+log4j2 = "2.23.1"
+log4j2-kotlin = "1.4.0"
+sqlite-jdbc = "3.45.3.0"
+xmlutil = "0.86.3"
+
+# Plugins
+ktlintPlugin = "12.1.1"
+versionsPlugin = "0.51.0"
+
+[libraries]
+# Common
+kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinx-datetime" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+sqlite-jdbc = { group = "org.xerial", name = "sqlite-jdbc", version.ref = "sqlite-jdbc" }
+log4j2-slf4j2-impl = { group = "org.apache.logging.log4j", name = "log4j-slf4j2-impl", version.ref = "log4j2" }
+log4j2-api-kotlin = { group = "org.apache.logging.log4j", name = "log4j-api-kotlin", version.ref = "log4j2-kotlin" }
+
+# Kalibak
+kotlin-reflect = { group = "org.jetbrains.kotlin", name = "kotlin-reflect", version.ref = "kotlin" }
+junit-jupiter-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", version.ref = "junit" }
+junit-jupiter-engine = { group = "org.junit.jupiter", name = "junit-jupiter-engine", version.ref = "junit" }
+
+# Kilowog
+commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commons-compress" }
+junrar = { group = "com.github.junrar", name = "junrar", version.ref = "junrar" }
+hoplite-core = { group = "com.sksamuel.hoplite", name = "hoplite-core", version.ref = "hoplite" }
+xmlutil-core = { group = "io.github.pdvrieze.xmlutil", name = "core-jvm", version.ref = "xmlutil" }
+xmlutil-serialization = { group = "io.github.pdvrieze.xmlutil", name = "serialization-jvm", version.ref = "xmlutil" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlinx-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+versions = { id = "com.github.ben-manes.versions", version.ref = "versionsPlugin" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintPlugin" }
