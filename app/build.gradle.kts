@@ -3,12 +3,12 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":comicvine"))
     implementation(project(":metron"))
+    implementation(libs.bundles.xmlutil)
     implementation(libs.commons.compress)
     implementation(libs.hoplite.core)
     implementation(libs.junrar)
-    implementation(libs.xmlutil.core)
-    implementation(libs.xmlutil.serialization)
 }
 
 application {

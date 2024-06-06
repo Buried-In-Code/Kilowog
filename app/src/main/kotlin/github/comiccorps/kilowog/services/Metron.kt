@@ -20,7 +20,7 @@ class Metron(settings: Settings.Metron) : BaseService<Series, Issue>() {
     private val session = Session(
         username = settings.username!!,
         password = settings.password!!.toString(),
-        cache = SQLiteCache(path = (Utils.CACHE_ROOT / "kalibak.sqlite"), expiry = 14),
+        cache = SQLiteCache(path = (Utils.CACHE_ROOT / "metron.sqlite"), expiry = 14),
     )
 
     private fun getSeriesByComicvine(comicvineId: Long?): Long? {

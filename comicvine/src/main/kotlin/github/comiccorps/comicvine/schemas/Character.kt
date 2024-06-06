@@ -2,10 +2,10 @@ package github.comiccorps.comicvine.schemas
 
 import github.comiccorps.comicvine.LocalDateTimeSerializer
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonNames
+import java.time.LocalDateTime
 
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable

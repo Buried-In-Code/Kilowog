@@ -7,6 +7,10 @@ plugins {
     alias(libs.plugins.ktlint)
 }
 
+println("Kotlin v${KotlinVersion.CURRENT}")
+println("Java v${System.getProperty("java.version")}")
+println("Arch: ${System.getProperty("os.arch")}")
+
 allprojects {
     group = "github.buriedincode"
     version = "0.2.0"
@@ -17,9 +21,8 @@ allprojects {
     }
 
     apply(plugin = "org.jlleitschuh.gradle.ktlint")
-
     configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
-        version.set("1.2.1")
+        version = "1.2.1"
     }
 }
 
@@ -28,8 +31,7 @@ subprojects {
     apply(plugin = "org.jetbrains.kotlin.plugin.serialization")
 
     dependencies {
-        implementation(rootProject.libs.kotlinx.datetime)
-        implementation(rootProject.libs.kotlinx.serialization.json)
+        implementation(rootProject.libs.bundles.kotlinx.serialization)
         implementation(rootProject.libs.log4j2.api.kotlin)
         runtimeOnly(rootProject.libs.log4j2.slf4j2.impl)
         runtimeOnly(rootProject.libs.sqlite.jdbc)

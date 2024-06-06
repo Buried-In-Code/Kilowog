@@ -2,6 +2,7 @@ package github.comiccorps.comicvine
 
 import github.comiccorps.comicvine.schemas.BasicCharacter
 import github.comiccorps.comicvine.schemas.Character
+import github.comiccorps.comicvine.schemas.GenericEntry
 import github.comiccorps.comicvine.schemas.Response
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerializationException
@@ -91,7 +92,7 @@ class Comicvine(
     }
 
     @Throws(ServiceException::class, AuthenticationException::class)
-    private inline fun <reified T> getRequest(uri: URI): Response<T> {
+    internal inline fun <reified T> getRequest(uri: URI): Response<T> {
         val cacheKey = API_KEY_REGEX.replaceFirst(uri.toString(), "api_key=***&")
         this.cache?.select(url = cacheKey)?.let {
             try {
@@ -117,18 +118,16 @@ class Comicvine(
         var page = params.getOrDefault("page", "1").toInt()
         val limit = params.getOrDefault("limit", "100").toInt()
         val offset = params.getOrDefault("offset", "${(page - 1) * limit}").toInt()
-        var hasNextPage = true
 
-        while (hasNextPage) {
+        do {
             val uri = this.encodeURI(
                 endpoint = endpoint,
                 params = params + ("page" to page.toString()) + ("limit" to limit.toString()) + ("offset" to offset.toString()),
             )
             val response = this.getRequest<List<T>>(uri = uri)
             resultList.addAll(response.results)
-            hasNextPage = response.totalResults >= page * limit
             page++
-        }
+        } while (response.totalResults >= page * limit)
 
         return resultList
     }
@@ -143,6 +142,14 @@ class Comicvine(
 
     @Throws(ServiceException::class, AuthenticationException::class)
     fun getCharacter(id: Long): Character = this.fetchItem(endpoint = "/character/4005-$id")
+
+    @Throws(ServiceException::class, AuthenticationException::class)
+    fun listPublishers(params: Map<String, String> = emptyMap()): List<GenericEntry> {
+        return this.fetchList(endpoint = "/publishers", params = params)
+    }
+
+    @Throws(ServiceException::class, AuthenticationException::class)
+    fun getPublisher(id: Long): GenericEntry = this.fetchItem(endpoint = "/publisher/4010-$id")
 
     companion object : Logging {
         private const val BASE_API = "https://comicvine.gamespot.com/api"

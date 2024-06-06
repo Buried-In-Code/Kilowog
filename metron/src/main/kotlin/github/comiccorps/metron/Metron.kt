@@ -104,7 +104,7 @@ class Metron(
     }
 
     @Throws(ServiceException::class, AuthenticationException::class)
-    private inline fun <reified T> getRequest(uri: URI): T {
+    internal inline fun <reified T> getRequest(uri: URI): T {
         this.cache?.select(url = uri.toString())?.let {
             try {
                 logger.debug("Using cached response for $uri")
@@ -127,15 +127,13 @@ class Metron(
     private inline fun <reified T> fetchList(endpoint: String, params: Map<String, String>): List<T> {
         val resultList = mutableListOf<T>()
         var page = params.getOrDefault("page", "1").toInt()
-        var hasNextPage = true
 
-        while (hasNextPage) {
+        do {
             val uri = this.encodeURI(endpoint = endpoint, params = params + ("page" to page.toString()))
             val response = this.getRequest<ListResponse<T>>(uri = uri)
             resultList.addAll(response.results)
-            hasNextPage = response.next != null
             page++
-        }
+        } while (response.next != null)
 
         return resultList
     }

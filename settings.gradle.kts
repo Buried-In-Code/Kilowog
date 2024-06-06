@@ -4,6 +4,6 @@ plugins {
 
 rootProject.name = "Kilowog"
 
-include("kilowog")
 include("comicvine")
 include("metron")
+include("app")

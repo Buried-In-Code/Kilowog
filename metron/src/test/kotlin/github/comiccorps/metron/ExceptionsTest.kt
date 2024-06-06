@@ -9,7 +9,7 @@ import java.time.Duration
 import kotlin.jvm.java
 
 @TestInstance(Lifecycle.PER_CLASS)
-class ExceptionTest {
+class ExceptionsTest {
     @Nested
     inner class Authentication {
         @Test
