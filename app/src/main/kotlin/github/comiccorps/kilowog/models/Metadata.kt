@@ -87,7 +87,9 @@ class Metadata(
                 it.creator.title to it.roles.map { it.title }
             }
             this.coverDate = this@Metadata.issue.coverDate
-            this.genreList = this@Metadata.issue.series.genres.map { it.title }
+            this.genreList = this@Metadata
+                .issue.series.genres
+                .map { it.title }
             this.locationList = this@Metadata.issue.locations.map { it.title }
             this.storyArcList = this@Metadata.issue.storyArcs.map { it.title }
             this.teamList = this@Metadata.issue.teams.map { it.title }
@@ -95,8 +97,12 @@ class Metadata(
     }
 
     fun toMetronInfo(): MetronInfo? {
-        val source = this.issue.resources.firstOrNull { it.source == Source.METRON }?.source
-            ?: this.issue.resources.firstOrNull { it.source == Source.COMICVINE }?.source
+        val source = this.issue.resources
+            .firstOrNull { it.source == Source.METRON }
+            ?.source
+            ?: this.issue.resources
+                .firstOrNull { it.source == Source.COMICVINE }
+                ?.source
         return MetronInfo(
             arcs = this.issue.storyArcs.map {
                 Arc(
@@ -115,7 +121,9 @@ class Metadata(
             credits = this.issue.credits.map {
                 MetronCredit(
                     creator = MetronResource(
-                        id = it.creator.resources.firstOrNull { it.source == source }?.value,
+                        id = it.creator.resources
+                            .firstOrNull { it.source == source }
+                            ?.value,
                         value = it.creator.title,
                     ),
                     roles = it.roles.mapNotNull {
@@ -135,7 +143,9 @@ class Metadata(
             id = source?.titlecase()?.asEnumOrNull<InformationSource>()?.let {
                 MetronSource(
                     source = it,
-                    value = this.issue.resources.firstOrNull { it.source == source }?.value ?: return@let null,
+                    value = this.issue.resources
+                        .firstOrNull { it.source == source }
+                        ?.value ?: return@let null,
                 )
             },
             locations = this.issue.locations.map {
@@ -158,12 +168,18 @@ class Metadata(
                 )
             },
             publisher = MetronResource(
-                id = this.issue.series.publisher.resources.firstOrNull { it.source == source }?.value,
+                id = this.issue.series.publisher.resources
+                    .firstOrNull { it.source == source }
+                    ?.value,
                 value = this.issue.series.publisher.title,
             ),
             series = MetronSeries(
-                format = this.issue.format.titlecase().asEnumOrNull<Format>() ?: Format.SERIES,
-                id = this.issue.series.resources.firstOrNull { it.source == source }?.value,
+                format = this.issue.format
+                    .titlecase()
+                    .asEnumOrNull<Format>() ?: Format.SERIES,
+                id = this.issue.series.resources
+                    .firstOrNull { it.source == source }
+                    ?.value,
                 lang = this.issue.language,
                 name = this.issue.series.title,
                 volume = this.issue.series.volume,

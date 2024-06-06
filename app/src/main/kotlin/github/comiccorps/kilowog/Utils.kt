@@ -62,16 +62,19 @@ object Utils {
     internal fun listFiles(path: Path, vararg extensions: String): List<Path> {
         require(Files.isDirectory(path)) { "'$path' must be a directory" }
 
-        return path.toFile().walkTopDown()
+        return path
+            .toFile()
+            .walkTopDown()
             .onEnter { !it.name.startsWith(".") }
             .filter { file ->
-                file.isFile && (
-                    extensions.isEmpty() || extensions.any { extension ->
-                        file.extension.equals(extension, ignoreCase = true)
-                    }
-                )
-            }
-            .map { it.toPath() }
+                file.isFile &&
+                    (
+                        extensions.isEmpty() ||
+                            extensions.any { extension ->
+                                file.extension.equals(extension, ignoreCase = true)
+                            }
+                    )
+            }.map { it.toPath() }
             .toList()
     }
 

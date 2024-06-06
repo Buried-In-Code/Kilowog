@@ -38,10 +38,11 @@ class CBTArchive(path: Path) : BaseArchive(path = path) {
                 generateSequence { tarInput.nextEntry }
                     .first { it.name == filename }
                     .let {
-                        ByteArrayOutputStream().use { output ->
-                            IOUtils.copy(tarInput, output)
-                            output.toByteArray()
-                        }.toString(StandardCharsets.UTF_8)
+                        ByteArrayOutputStream()
+                            .use { output ->
+                                IOUtils.copy(tarInput, output)
+                                output.toByteArray()
+                            }.toString(StandardCharsets.UTF_8)
                     }
             }
         } catch (e: Exception) {

@@ -147,7 +147,9 @@ class MetronInfo(
                         },
                     )
                 },
-                format = this.series.format?.titlecase()?.asEnumOrNull<Format>() ?: Format.COMIC,
+                format = this.series.format
+                    ?.titlecase()
+                    ?.asEnumOrNull<Format>() ?: Format.COMIC,
                 language = this.series.lang,
                 locations = this.locations.map { location ->
                     TitledResource(
@@ -220,7 +222,12 @@ class MetronInfo(
                 },
                 title = this.title,
             ),
-            meta = Meta(date = java.time.LocalDate.now().toKotlinLocalDate(), tool = Tool(value = "MetronInfo")),
+            meta = Meta(
+                date = java.time.LocalDate
+                    .now()
+                    .toKotlinLocalDate(),
+                tool = Tool(value = "MetronInfo"),
+            ),
             notes = this.notes,
             pages = this.pages.mapNotNull {
                 MetadataPage(

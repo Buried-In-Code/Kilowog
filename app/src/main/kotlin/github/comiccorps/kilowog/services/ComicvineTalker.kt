@@ -57,7 +57,8 @@ class ComicvineTalker(settings: Settings.Comicvine) : BaseService<Volume, Issue>
     }
 
     private fun addPublisher(publisher: Publisher, metadata: Metadata) {
-        val resources = metadata.issue.series.publisher.resources.toMutableSet()
+        val resources = metadata.issue.series.publisher.resources
+            .toMutableSet()
         resources.add(Resource(source = Source.COMICVINE, value = publisher.id))
         metadata.issue.series.publisher.resources = resources.toList()
         metadata.issue.series.publisher.title = publisher.name
@@ -77,7 +78,9 @@ class ComicvineTalker(settings: Settings.Comicvine) : BaseService<Volume, Issue>
     fun fetchPublisher(metadata: Metadata?, metronInfo: MetronInfo?, comicInfo: ComicInfo?): Publisher? {
         var publisherId: Long? = null
         metadata?.let {
-            publisherId = it.issue.series.publisher.resources.firstOrNull { it.source == Source.COMICVINE }?.value
+            publisherId = it.issue.series.publisher.resources
+                .firstOrNull { it.source == Source.COMICVINE }
+                ?.value
         }
         if (publisherId == null) {
             metronInfo?.let {
@@ -88,7 +91,11 @@ class ComicvineTalker(settings: Settings.Comicvine) : BaseService<Volume, Issue>
         }
         if (publisherId == null) {
             publisherId = this.searchPublishers(
-                title = metadata?.issue?.series?.publisher?.title ?: metronInfo?.publisher?.value ?: comicInfo?.publisher,
+                title = metadata
+                    ?.issue
+                    ?.series
+                    ?.publisher
+                    ?.title ?: metronInfo?.publisher?.value ?: comicInfo?.publisher,
             ) ?: return null
         }
 
@@ -107,9 +114,11 @@ class ComicvineTalker(settings: Settings.Comicvine) : BaseService<Volume, Issue>
 
     private fun searchVolumes(publisherId: Long, title: String?): Long? {
         val name = title ?: Console.prompt("Series title")
-        val options = this.session.listVolumes(mapOf("filter" to "name:$name")).filter {
-            it.publisher != null && it.publisher.id == publisherId
-        }.sortedWith(compareBy(VolumeEntry::name, VolumeEntry::startYear))
+        val options = this.session
+            .listVolumes(mapOf("filter" to "name:$name"))
+            .filter {
+                it.publisher != null && it.publisher.id == publisherId
+            }.sortedWith(compareBy(VolumeEntry::name, VolumeEntry::startYear))
         val index = Console.menu(
             choices = options.map { "${it.id} | ${it.name} (${it.startYear})" },
             prompt = "Select Comicvine Volume",
@@ -125,7 +134,8 @@ class ComicvineTalker(settings: Settings.Comicvine) : BaseService<Volume, Issue>
     }
 
     private fun addVolume(volume: Volume, metadata: Metadata) {
-        val resources = metadata.issue.series.resources.toMutableSet()
+        val resources = metadata.issue.series.resources
+            .toMutableSet()
         resources.add(Resource(source = Source.COMICVINE, value = volume.id))
         metadata.issue.series.resources = resources.toList()
         metadata.issue.series.startYear = volume.startYear
@@ -146,7 +156,9 @@ class ComicvineTalker(settings: Settings.Comicvine) : BaseService<Volume, Issue>
     fun fetchSeries(metadata: Metadata?, metronInfo: MetronInfo?, comicInfo: ComicInfo?, publisherId: Long): Volume? {
         var volumeId: Long? = null
         metadata?.let {
-            volumeId = it.issue.series.resources.firstOrNull { it.source == Source.COMICVINE }?.value
+            volumeId = it.issue.series.resources
+                .firstOrNull { it.source == Source.COMICVINE }
+                ?.value
         }
         if (volumeId == null) {
             metronInfo?.let {
@@ -179,9 +191,10 @@ class ComicvineTalker(settings: Settings.Comicvine) : BaseService<Volume, Issue>
         val options = if (number == null) {
             this.session.listIssues(mapOf("filter" to "volume:$volumeId")).sortedWith(compareBy(IssueEntry::number, IssueEntry::name))
         } else {
-            this.session.listIssues(
-                mapOf("filter" to "volume:$volumeId,issue_number:$number"),
-            ).sortedWith(compareBy(IssueEntry::number, IssueEntry::name))
+            this.session
+                .listIssues(
+                    mapOf("filter" to "volume:$volumeId,issue_number:$number"),
+                ).sortedWith(compareBy(IssueEntry::number, IssueEntry::name))
         }
         val index = Console.menu(
             choices = options.map { "${it.id} | ${it.number} - ${it.name}" },
@@ -257,10 +270,11 @@ class ComicvineTalker(settings: Settings.Comicvine) : BaseService<Volume, Issue>
                 value = it.name ?: return@mapNotNull null,
             )
         }
-        metronInfo.coverDate = issue.coverDate ?: LocalDate.parse(
-            Console.prompt("Cover Date (yyyy-mm-dd)"),
-            DateTimeFormatter.ISO_DATE,
-        ).toKotlinLocalDate()
+        metronInfo.coverDate = issue.coverDate ?: LocalDate
+            .parse(
+                Console.prompt("Cover Date (yyyy-mm-dd)"),
+                DateTimeFormatter.ISO_DATE,
+            ).toKotlinLocalDate()
         metronInfo.credits = issue.creators.mapNotNull {
             MetronCredit(
                 creator = it.name?.let { name -> MetronResource(id = it.id, value = name) } ?: return@mapNotNull null,
@@ -310,7 +324,9 @@ class ComicvineTalker(settings: Settings.Comicvine) : BaseService<Volume, Issue>
     fun fetchIssue(metadata: Metadata?, metronInfo: MetronInfo?, comicInfo: ComicInfo?, seriesId: Long): Issue? {
         var issueId: Long? = null
         metadata?.let {
-            issueId = it.issue.resources.firstOrNull { it.source == Source.COMICVINE }?.value
+            issueId = it.issue.resources
+                .firstOrNull { it.source == Source.COMICVINE }
+                ?.value
         }
         if (issueId == null) {
             metronInfo?.let {

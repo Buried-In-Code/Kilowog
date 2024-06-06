@@ -221,7 +221,12 @@ class ComicInfo(
                 teams = this.teamList.map { TitledResource(title = it) },
                 title = this.title,
             ),
-            meta = Meta(date = java.time.LocalDate.now().toKotlinLocalDate(), tool = Tool(value = "ComicInfo")),
+            meta = Meta(
+                date = java.time.LocalDate
+                    .now()
+                    .toKotlinLocalDate(),
+                tool = Tool(value = "ComicInfo"),
+            ),
             notes = this.notes,
             pages = this.pages.mapNotNull {
                 MetadataPage(
@@ -344,9 +349,12 @@ class ComicInfo(
         }
 
         private fun listCreators(role: String, mapping: Map<String, List<String>>): List<String> {
-            return mapping.entries.filter { entry ->
-                entry.value.any { it.equals(role, ignoreCase = true) }
-            }.map { it.key }.toSet().sorted()
+            return mapping.entries
+                .filter { entry ->
+                    entry.value.any { it.equals(role, ignoreCase = true) }
+                }.map { it.key }
+                .toSet()
+                .sorted()
         }
     }
 }

@@ -46,9 +46,11 @@ object JacksonPolicy : DefaultXmlSerializationPolicy(
         val r = super.effectiveOutputKind(serializerParent, tagParent, canBeAttribute)
         return when {
             // Do take into account the XmlElement annotation
-            r == OutputKind.Attribute && serializerParent.elementUseAnnotations.firstNotNullOfOrNull {
-                it as? XmlElement
-            }?.value != false -> OutputKind.Element
+            r == OutputKind.Attribute &&
+                serializerParent.elementUseAnnotations
+                    .firstNotNullOfOrNull {
+                        it as? XmlElement
+                    }?.value != false -> OutputKind.Element
             else -> r
         }
     }

@@ -26,7 +26,10 @@ class Metron(settings: Settings.Metron) : BaseService<Series, Issue>() {
     private fun getSeriesByComicvine(comicvineId: Long?): Long? {
         return comicvineId?.let {
             try {
-                this.session.listSeries(params = mapOf("cv_id" to it.toString())).firstOrNull()?.id
+                this.session
+                    .listSeries(params = mapOf("cv_id" to it.toString()))
+                    .firstOrNull()
+                    ?.id
             } catch (se: ServiceException) {
                 null
             }
@@ -73,7 +76,10 @@ class Metron(settings: Settings.Metron) : BaseService<Series, Issue>() {
     private fun getIssueByComicvine(comicvineId: Long?): Long? {
         return comicvineId?.let {
             try {
-                this.session.listIssues(params = mapOf("cv_id" to it.toString())).firstOrNull()?.id
+                this.session
+                    .listIssues(params = mapOf("cv_id" to it.toString()))
+                    .firstOrNull()
+                    ?.id
             } catch (se: ServiceException) {
                 null
             }

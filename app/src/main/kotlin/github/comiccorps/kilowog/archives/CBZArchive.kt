@@ -42,10 +42,11 @@ class CBZArchive(path: Path) : BaseArchive(path = path) {
                 generateSequence { zipInput.nextEntry }
                     .first { it.name == filename }
                     .let {
-                        ByteArrayOutputStream().use { output ->
-                            IOUtils.copy(zipInput, output)
-                            output.toByteArray()
-                        }.decodeToString()
+                        ByteArrayOutputStream()
+                            .use { output ->
+                                IOUtils.copy(zipInput, output)
+                                output.toByteArray()
+                            }.decodeToString()
                     }
             }
         } catch (e: Exception) {

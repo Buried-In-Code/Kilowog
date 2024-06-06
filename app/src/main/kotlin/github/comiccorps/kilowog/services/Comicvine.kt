@@ -35,8 +35,7 @@ data class Comicvine(private val apiKey: String, private val cache: SQLiteCache?
             .sorted()
             .map {
                 "$it=${URLEncoder.encode(params[it], StandardCharsets.UTF_8)}"
-            }
-            .collect(Collectors.joining("&", "$BASE_API$endpoint?", ""))
+            }.collect(Collectors.joining("&", "$BASE_API$endpoint?", ""))
         return URI.create(encodedUrl)
     }
 
@@ -50,14 +49,14 @@ data class Comicvine(private val apiKey: String, private val cache: SQLiteCache?
             }
         }
         try {
-            val request = HttpRequest.newBuilder()
+            val request = HttpRequest
+                .newBuilder()
                 .uri(uri)
                 .setHeader("Accept", "application/json")
                 .setHeader(
                     "User-Agent",
                     "Kilowog-v${Utils.VERSION}/Java-v${System.getProperty("java.version")}",
-                )
-                .GET()
+                ).GET()
                 .build()
             val response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString())
             val level = when {
@@ -208,7 +207,8 @@ data class Comicvine(private val apiKey: String, private val cache: SQLiteCache?
 
     companion object : Logging {
         private const val BASE_API = "https://comicvine.gamespot.com/api"
-        private val CLIENT = HttpClient.newBuilder()
+        private val CLIENT = HttpClient
+            .newBuilder()
             .followRedirects(HttpClient.Redirect.ALWAYS)
             .connectTimeout(Duration.ofSeconds(5))
             .build()

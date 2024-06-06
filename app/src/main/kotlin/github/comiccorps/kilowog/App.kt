@@ -208,83 +208,101 @@ object App : Logging {
     fun start(settings: Settings, force: Boolean = false) {
         logger.info("Starting Kilowog")
         convertCollection(path = settings.collectionFolder, output = settings.output.format)
-        Utils.listFiles(settings.collectionFolder, settings.output.format.name.lowercase()).forEach {
-            val archive = getArchive(path = it)
-            val metaInfo = readMetaInfo(archive = archive, settings = settings.output)
+        Utils
+            .listFiles(
+                settings.collectionFolder,
+                settings.output.format.name
+                    .lowercase(),
+            ).forEach {
+                val archive = getArchive(path = it)
+                val metaInfo = readMetaInfo(archive = archive, settings = settings.output)
 
-            if (!force && metaInfo.metadata != null) {
-                val now = LocalDate.now()
-                if (metaInfo.metadata.meta.tool == Tool() && metaInfo.metadata.meta.date.toJavaLocalDate().isAfter(now.minusDays(28))) {
-                    return@forEach
+                if (!force && metaInfo.metadata != null) {
+                    val now = LocalDate.now()
+                    if (metaInfo.metadata.meta.tool == Tool() &&
+                        metaInfo.metadata.meta.date
+                            .toJavaLocalDate()
+                            .isAfter(now.minusDays(28))
+                    ) {
+                        return@forEach
+                    }
                 }
+
+                logger.info("Processing ${it.name}")
+                fetchFromServices(settings = settings, metaInfo = metaInfo)
             }
 
-            logger.info("Processing ${it.name}")
-            fetchFromServices(settings = settings, metaInfo = metaInfo)
-        }
-
-        Utils.listFiles(path = settings.collectionFolder, settings.output.format.name.lowercase()).forEach {
-            val archive = getArchive(path = it)
-            val (metadata, metronInfo, comicInfo) = readMetaInfo(archive = archive, settings = settings.output)
-            val publisherFilename = metadata?.issue?.series?.publisher?.title
-                ?: metronInfo?.publisher?.value
-                ?: comicInfo?.publisher
-                ?: return@forEach
-            val seriesTitle = metadata?.issue?.series?.title
-                ?: metronInfo?.series?.name
-                ?: comicInfo?.series
-                ?: return@forEach
-            val seriesVolume = metadata?.issue?.series?.volume
-                ?: metronInfo?.series?.volume
-                ?: comicInfo?.volume
-                ?: return@forEach
-            val seriesFilename = if (seriesVolume == 1) seriesTitle else "$seriesTitle v$seriesVolume"
-            val issueFilename = metadata?.let {
-                val numberStr = it.issue.number?.let { number ->
-                    "_#${number.padStart(if (it.issue.format == Format.COMIC) 3 else 2, '0')}"
-                } ?: ""
-                val formatStr = when (it.issue.format) {
-                    Format.ANNUAL -> "_Annual"
-                    Format.DIGITAL_CHAPTER -> "_Chapter"
-                    Format.GRAPHIC_NOVEL -> "_GN"
-                    Format.HARDCOVER -> "_HC"
-                    Format.TRADE_PAPERBACK -> "_TP"
-                    else -> ""
+        Utils
+            .listFiles(
+                path = settings.collectionFolder,
+                settings.output.format.name
+                    .lowercase(),
+            ).forEach {
+                val archive = getArchive(path = it)
+                val (metadata, metronInfo, comicInfo) = readMetaInfo(archive = archive, settings = settings.output)
+                val publisherFilename = metadata
+                    ?.issue
+                    ?.series
+                    ?.publisher
+                    ?.title
+                    ?: metronInfo?.publisher?.value
+                    ?: comicInfo?.publisher
+                    ?: return@forEach
+                val seriesTitle = metadata?.issue?.series?.title
+                    ?: metronInfo?.series?.name
+                    ?: comicInfo?.series
+                    ?: return@forEach
+                val seriesVolume = metadata?.issue?.series?.volume
+                    ?: metronInfo?.series?.volume
+                    ?: comicInfo?.volume
+                    ?: return@forEach
+                val seriesFilename = if (seriesVolume == 1) seriesTitle else "$seriesTitle v$seriesVolume"
+                val issueFilename = metadata?.let {
+                    val numberStr = it.issue.number?.let { number ->
+                        "_#${number.padStart(if (it.issue.format == Format.COMIC) 3 else 2, '0')}"
+                    } ?: ""
+                    val formatStr = when (it.issue.format) {
+                        Format.ANNUAL -> "_Annual"
+                        Format.DIGITAL_CHAPTER -> "_Chapter"
+                        Format.GRAPHIC_NOVEL -> "_GN"
+                        Format.HARDCOVER -> "_HC"
+                        Format.TRADE_PAPERBACK -> "_TP"
+                        else -> ""
+                    }
+                    when (it.issue.format) {
+                        Format.ANNUAL, Format.DIGITAL_CHAPTER -> seriesFilename + formatStr + numberStr
+                        Format.GRAPHIC_NOVEL, Format.HARDCOVER, Format.TRADE_PAPERBACK -> seriesFilename + numberStr + formatStr
+                        else -> seriesFilename + numberStr
+                    }
+                } ?: metronInfo?.let {
+                    val numberStr = it.number?.let { number ->
+                        "_#${number.padStart(if (it.series.format == MetronFormat.SERIES) 3 else 2, '0')}"
+                    } ?: ""
+                    val formatStr = when (it.series.format) {
+                        MetronFormat.ANNUAL -> "_Annual"
+                        MetronFormat.GRAPHIC_NOVEL -> "_GN"
+                        MetronFormat.TRADE_PAPERBACK -> "_TP"
+                        else -> ""
+                    }
+                    when (it.series.format) {
+                        MetronFormat.ANNUAL -> seriesFilename + formatStr + numberStr
+                        MetronFormat.GRAPHIC_NOVEL, MetronFormat.TRADE_PAPERBACK -> seriesFilename + numberStr + formatStr
+                        else -> seriesFilename + numberStr
+                    }
                 }
-                when (it.issue.format) {
-                    Format.ANNUAL, Format.DIGITAL_CHAPTER -> seriesFilename + formatStr + numberStr
-                    Format.GRAPHIC_NOVEL, Format.HARDCOVER, Format.TRADE_PAPERBACK -> seriesFilename + numberStr + formatStr
-                    else -> seriesFilename + numberStr
-                }
-            } ?: metronInfo?.let {
-                val numberStr = it.number?.let { number ->
-                    "_#${number.padStart(if (it.series.format == MetronFormat.SERIES) 3 else 2, '0')}"
-                } ?: ""
-                val formatStr = when (it.series.format) {
-                    MetronFormat.ANNUAL -> "_Annual"
-                    MetronFormat.GRAPHIC_NOVEL -> "_GN"
-                    MetronFormat.TRADE_PAPERBACK -> "_TP"
-                    else -> ""
-                }
-                when (it.series.format) {
-                    MetronFormat.ANNUAL -> seriesFilename + formatStr + numberStr
-                    MetronFormat.GRAPHIC_NOVEL, MetronFormat.TRADE_PAPERBACK -> seriesFilename + numberStr + formatStr
-                    else -> seriesFilename + numberStr
+                    ?: comicInfo?.let {
+                        seriesFilename + it.number
+                    }
+                    ?: return@forEach
+                val newLocation = settings.collectionFolder / Utils.sanitize(
+                    value = publisherFilename,
+                ) / Utils.sanitize(value = seriesFilename) / Utils.sanitize(value = issueFilename)
+                if (it == newLocation) {
+                    logger.info("Moved ${it.relativeTo(settings.collectionFolder)} to ${newLocation.relativeTo(settings.collectionFolder)}")
+                    newLocation.parent.toFile().mkdirs()
+                    it.moveTo(newLocation, overwrite = false)
                 }
             }
-                ?: comicInfo?.let {
-                    seriesFilename + it.number
-                }
-                ?: return@forEach
-            val newLocation = settings.collectionFolder / Utils.sanitize(
-                value = publisherFilename,
-            ) / Utils.sanitize(value = seriesFilename) / Utils.sanitize(value = issueFilename)
-            if (it == newLocation) {
-                logger.info("Moved ${it.relativeTo(settings.collectionFolder)} to ${newLocation.relativeTo(settings.collectionFolder)}")
-                newLocation.parent.toFile().mkdirs()
-                it.moveTo(newLocation, overwrite = false)
-            }
-        }
         removeEmptyDirectories(directory = settings.collectionFolder)
     }
 }
