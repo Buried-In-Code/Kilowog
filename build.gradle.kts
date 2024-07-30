@@ -22,7 +22,7 @@ allprojects {
 
     apply(plugin = "org.jlleitschuh.gradle.ktlint")
     configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
-        version = "1.3.0"
+        version = "1.3.1"
     }
 }
 
@@ -32,7 +32,7 @@ subprojects {
 
     dependencies {
         implementation(rootProject.libs.bundles.kotlinx.serialization)
-        implementation(rootProject.libs.log4j2.api.kotlin)
+        implementation(rootProject.libs.kotlin.logging)
         runtimeOnly(rootProject.libs.log4j2.slf4j2.impl)
         runtimeOnly(rootProject.libs.sqlite.jdbc)
     }
